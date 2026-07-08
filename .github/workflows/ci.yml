@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'claude/**']
+
+# Least privilege: CI only reads the repo.
+permissions:
+  contents: read
+
+# Cancel superseded PR runs, but never an in-progress main run — a permanently
+# "cancelled" main commit masks breakage and breaks CI bisection.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PROJECT: RepoMen.xcodeproj
+  SCHEME: RepoMen
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: macos-14
+    timeout-minutes: 30   # a wedged build must not burn hours of runner time
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'   # pin so a runner-image bump can't change the toolchain
+
+      - name: Install xcbeautify
+        run: brew install xcbeautify
+
+      - name: Build & test
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -destination 'platform=macOS' \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            clean test | xcbeautify
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestResults
+          path: TestResults.xcresult
+          if-no-files-found: ignore

@@ -1,0 +1,213 @@
+import SwiftUI
+
+/// Sidebar grouping for everything RepoMen can find.
+enum ArtifactCategory: String, CaseIterable, Identifiable, Sendable {
+    case projects
+    case developer
+    case packageManagers
+    case browsers
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .projects: return "Project artifacts"
+        case .developer: return "Developer caches"
+        case .packageManagers: return "Package managers"
+        case .browsers: return "Browser caches"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .projects: return "hammer"
+        case .developer: return "wrench.and.screwdriver"
+        case .packageManagers: return "shippingbox"
+        case .browsers: return "globe"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .projects: return .orange
+        case .developer: return .blue
+        case .packageManagers: return .brown
+        case .browsers: return .teal
+        }
+    }
+}
+
+/// Every kind of reclaimable thing RepoMen knows about. Each kind carries the one
+/// sentence that justifies deleting it — if a kind can't state how the artifact comes
+/// back, it doesn't belong in this enum (see PLAN.md's trust model).
+enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
+    // Project artifacts (anchor-based deep scan).
+    case rustTarget
+    case nodeModules
+    case jsBuildOutput
+    case swiftPMBuild
+    case xcodeBuild
+    case cocoaPods
+    case gradleBuild
+    case mavenTarget
+    case flutterBuild
+    case pythonCache
+    case pythonVenv
+    case cmakeBuild
+    case dotnetBuild
+    case elixirBuild
+    case haskellBuild
+    case zigBuild
+
+    // Developer caches (well-known locations).
+    case derivedData
+    case deviceSupport
+    case simulatorCache
+    case swiftPMCache
+
+    // Package-manager caches.
+    case homebrewCache
+    case npmCache
+    case yarnCache
+    case pnpmStore
+    case pipCache
+    case uvCache
+    case goBuildCache
+    case cargoRegistryCache
+    case gradleUserCache
+    case mavenLocalRepo
+    case cocoaPodsCache
+
+    // Browsers.
+    case browserCache
+
+    var id: String { rawValue }
+
+    var category: ArtifactCategory {
+        switch self {
+        case .rustTarget, .nodeModules, .jsBuildOutput, .swiftPMBuild, .xcodeBuild,
+             .cocoaPods, .gradleBuild, .mavenTarget, .flutterBuild, .pythonCache,
+             .pythonVenv, .cmakeBuild, .dotnetBuild, .elixirBuild, .haskellBuild,
+             .zigBuild:
+            return .projects
+        case .derivedData, .deviceSupport, .simulatorCache, .swiftPMCache:
+            return .developer
+        case .homebrewCache, .npmCache, .yarnCache, .pnpmStore, .pipCache, .uvCache,
+             .goBuildCache, .cargoRegistryCache, .gradleUserCache, .mavenLocalRepo,
+             .cocoaPodsCache:
+            return .packageManagers
+        case .browserCache:
+            return .browsers
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .rustTarget: return "Rust build"
+        case .nodeModules: return "node_modules"
+        case .jsBuildOutput: return "JS build output"
+        case .swiftPMBuild: return "SwiftPM build"
+        case .xcodeBuild: return "Xcode build"
+        case .cocoaPods: return "CocoaPods pods"
+        case .gradleBuild: return "Gradle build"
+        case .mavenTarget: return "Maven build"
+        case .flutterBuild: return "Flutter build"
+        case .pythonCache: return "Python cache"
+        case .pythonVenv: return "Python venv"
+        case .cmakeBuild: return "CMake build"
+        case .dotnetBuild: return ".NET build"
+        case .elixirBuild: return "Elixir build"
+        case .haskellBuild: return "Haskell build"
+        case .zigBuild: return "Zig build"
+        case .derivedData: return "DerivedData"
+        case .deviceSupport: return "Device support"
+        case .simulatorCache: return "Simulator cache"
+        case .swiftPMCache: return "SwiftPM cache"
+        case .homebrewCache: return "Homebrew cache"
+        case .npmCache: return "npm cache"
+        case .yarnCache: return "Yarn cache"
+        case .pnpmStore: return "pnpm store"
+        case .pipCache: return "pip cache"
+        case .uvCache: return "uv cache"
+        case .goBuildCache: return "Go build cache"
+        case .cargoRegistryCache: return "Cargo registry"
+        case .gradleUserCache: return "Gradle caches"
+        case .mavenLocalRepo: return "Maven repository"
+        case .cocoaPodsCache: return "CocoaPods cache"
+        case .browserCache: return "Browser cache"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .rustTarget: return "gearshape.2"
+        case .nodeModules, .jsBuildOutput: return "curlybraces"
+        case .swiftPMBuild, .swiftPMCache: return "swift"
+        case .xcodeBuild, .derivedData: return "hammer"
+        case .cocoaPods, .cocoaPodsCache: return "cube"
+        case .gradleBuild, .gradleUserCache: return "gearshape"
+        case .mavenTarget, .mavenLocalRepo: return "archivebox"
+        case .flutterBuild: return "wind"
+        case .pythonCache: return "terminal"
+        case .pythonVenv: return "leaf"
+        case .cmakeBuild: return "square.stack.3d.up"
+        case .dotnetBuild: return "square.grid.2x2"
+        case .elixirBuild: return "drop"
+        case .haskellBuild: return "function"
+        case .zigBuild: return "bolt"
+        case .deviceSupport: return "iphone"
+        case .simulatorCache: return "square.on.square"
+        case .homebrewCache: return "mug"
+        case .npmCache, .yarnCache, .pnpmStore, .pipCache, .uvCache, .goBuildCache,
+             .cargoRegistryCache:
+            return "shippingbox"
+        case .browserCache: return "globe"
+        }
+    }
+
+    /// One sentence shown in the UI explaining how this comes back after deletion.
+    var regenerationHint: String {
+        switch self {
+        case .rustTarget: return "Recreated by the next cargo build."
+        case .nodeModules: return "Recreated by npm/yarn/pnpm install."
+        case .jsBuildOutput: return "Recreated by the next dev/build run."
+        case .swiftPMBuild: return "Recreated by the next swift build."
+        case .xcodeBuild: return "Recreated by the next Xcode build."
+        case .cocoaPods: return "Recreated by pod install."
+        case .gradleBuild: return "Recreated by the next Gradle build."
+        case .mavenTarget: return "Recreated by the next mvn build."
+        case .flutterBuild: return "Recreated by the next flutter build."
+        case .pythonCache: return "Recreated automatically by Python tooling."
+        case .pythonVenv: return "Recreate with python -m venv / uv — reinstalls packages."
+        case .cmakeBuild: return "Recreated by the next CMake configure + build."
+        case .dotnetBuild: return "Recreated by the next dotnet build."
+        case .elixirBuild: return "Recreated by mix deps.get + mix compile."
+        case .haskellBuild: return "Recreated by the next stack/cabal build."
+        case .zigBuild: return "Recreated by the next zig build."
+        case .derivedData: return "Xcode rebuilds indexes and products on demand."
+        case .deviceSupport: return "Re-copied from the device on next connect."
+        case .simulatorCache: return "Recreated by the simulator on demand."
+        case .swiftPMCache: return "Packages are re-fetched on the next resolve."
+        case .homebrewCache: return "Downloads are re-fetched by brew on demand."
+        case .npmCache, .yarnCache, .pipCache, .uvCache, .cargoRegistryCache,
+             .cocoaPodsCache:
+            return "Re-downloaded on the next install."
+        case .pnpmStore: return "Re-downloaded on the next install — shared across projects."
+        case .goBuildCache: return "Recreated by the next go build."
+        case .gradleUserCache: return "Re-downloaded on the next build — can be slow."
+        case .mavenLocalRepo: return "Re-downloaded on the next build — can be slow."
+        case .browserCache: return "The browser refills its cache while browsing."
+        }
+    }
+
+    /// Safe but *expensive* to rebuild (big re-downloads / reinstalls) — the UI adds a
+    /// visible note so these aren't reclaimed casually.
+    var isSlowToRegenerate: Bool {
+        switch self {
+        case .pythonVenv, .pnpmStore, .gradleUserCache, .mavenLocalRepo, .cocoaPods:
+            return true
+        default:
+            return false
+        }
+    }
+}
