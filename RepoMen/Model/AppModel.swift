@@ -16,6 +16,20 @@ struct ReclaimSummary: Identifiable, Sendable {
     /// "label: reason" for every skipped/failed item.
     let failures: [String]
     let trashed: Bool
+    /// Volume free space sampled just before/after the run (nil if unreadable) —
+    /// lets the summary show the delta the user actually cares about.
+    let freeBytesBefore: Int64?
+    let freeBytesAfter: Int64?
+    /// The all-time tally including this run.
+    let lifetimeReclaimedBytes: Int64
+}
+
+/// Live position within a running reclaim batch, shown in the footer.
+struct ReclaimProgress: Sendable {
+    /// 1-based index of the item currently being reclaimed.
+    let current: Int
+    let total: Int
+    let label: String
 }
 
 /// The window's state machine: scan → measure → review → reclaim. All UI state lives
@@ -256,32 +270,82 @@ final class AppModel: ObservableObject {
 
     // MARK: Reclaiming
 
+    /// Set by the toolbar button and the ⌘⌫ menu command; `DetailView` presents the
+    /// confirmation dialog while this is true. Only the dialog's destructive button
+    /// calls `reclaimChecked()` — there is still no one-keystroke path to deletion.
+    @Published var confirmingReclaim = false
+
+    /// Non-nil while a reclaim batch runs; drives the footer's progress line.
+    @Published private(set) var reclaimProgress: ReclaimProgress?
+
+    /// Terminate-safety bookkeeping consulted by the app delegate: the app must never
+    /// die in the middle of a deletion batch. When termination is requested mid-run,
+    /// the delegate defers it and the finishing reclaim replies.
+    private(set) static var activeReclaimCount = 0
+    static var terminateAfterReclaim = false
+
     func reclaimChecked() {
         let targets = checkedItems
         guard !targets.isEmpty, !isReclaiming else { return }
         let method: Reclaimer.Method = preferences.moveToTrash ? .trash : .delete
         isReclaiming = true
+        Self.activeReclaimCount += 1
+        reclaimProgress = ReclaimProgress(current: 0, total: targets.count, label: "")
+        let freeBefore = Self.volumeFreeBytes()
 
         Task.detached(priority: .userInitiated) { [weak self] in
-            let outcomes = Reclaimer.reclaim(targets, method: method)
+            let outcomes = Reclaimer.reclaim(targets, method: method) { current, total, item in
+                Task { @MainActor [weak self] in
+                    guard let self, self.isReclaiming else { return }
+                    self.reclaimProgress = ReclaimProgress(
+                        current: current, total: total, label: item.label)
+                }
+            }
             await MainActor.run { [weak self] in
+                AppModel.activeReclaimCount -= 1
+                defer {
+                    // A quit requested mid-reclaim was deferred; release it now.
+                    if AppModel.terminateAfterReclaim, AppModel.activeReclaimCount == 0 {
+                        AppModel.terminateAfterReclaim = false
+                        NSApplication.shared.reply(toApplicationShouldTerminate: true)
+                    }
+                }
                 guard let self else { return }
                 self.isReclaiming = false
+                self.reclaimProgress = nil
                 let reclaimed = outcomes.filter { $0.failure == nil }
+                let reclaimedPaths = Set(reclaimed.map(\.item.path))
+                let reclaimedPrefixes = reclaimed.map { $0.item.path + "/" }
                 self.items.removeAll { item in
-                    reclaimed.contains { PathGuards.isUnder(item.path, root: $0.item.path) }
+                    reclaimedPaths.contains(item.path)
+                        || reclaimedPrefixes.contains { item.path.hasPrefix($0) }
                 }
                 let remaining = Set(self.items.map(\.id))
                 self.checkedIDs = self.checkedIDs.intersection(remaining)
+                let freedBytes = reclaimed.reduce(0) { $0 + $1.item.sizeBytes }
+                if !reclaimed.isEmpty {
+                    self.preferences.lifetimeReclaimedBytes += freedBytes
+                    self.preferences.lifetimeReclaimedCount += reclaimed.count
+                }
                 self.summary = ReclaimSummary(
-                    freedBytes: reclaimed.reduce(0) { $0 + $1.item.sizeBytes },
+                    freedBytes: freedBytes,
                     reclaimedCount: reclaimed.count,
                     failures: outcomes.compactMap { outcome in
                         outcome.failure.map { "\(outcome.item.label): \($0)" }
                     },
-                    trashed: method == .trash)
+                    trashed: method == .trash,
+                    freeBytesBefore: freeBefore,
+                    freeBytesAfter: Self.volumeFreeBytes(),
+                    lifetimeReclaimedBytes: self.preferences.lifetimeReclaimedBytes)
             }
         }
+    }
+
+    private static func volumeFreeBytes() -> Int64? {
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        let values = try? home.resourceValues(
+            forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        return values?.volumeAvailableCapacityForImportantUsage
     }
 
     // MARK: Exclusions

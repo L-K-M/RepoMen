@@ -13,6 +13,8 @@ final class Preferences: ObservableObject {
         static let moveToTrash = "moveToTrash"
         static let idleDays = "idleDays"
         static let disabledKinds = "disabledKinds"
+        static let lifetimeReclaimedBytes = "lifetimeReclaimedBytes"
+        static let lifetimeReclaimedCount = "lifetimeReclaimedCount"
     }
 
     /// Folders whose trees are deep-scanned for project artifacts (absolute paths).
@@ -40,6 +42,14 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(Array(disabledKinds).sorted(), forKey: Key.disabledKinds) }
     }
 
+    /// All-time repossession tally — every reclaim adds to it, nothing resets it.
+    @Published var lifetimeReclaimedBytes: Int64 {
+        didSet { defaults.set(Int(lifetimeReclaimedBytes), forKey: Key.lifetimeReclaimedBytes) }
+    }
+    @Published var lifetimeReclaimedCount: Int {
+        didSet { defaults.set(lifetimeReclaimedCount, forKey: Key.lifetimeReclaimedCount) }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.scanRoots = defaults.stringArray(forKey: Key.scanRoots)
@@ -48,6 +58,8 @@ final class Preferences: ObservableObject {
         self.moveToTrash = defaults.object(forKey: Key.moveToTrash) as? Bool ?? true
         self.idleDays = defaults.object(forKey: Key.idleDays) as? Int ?? 30
         self.disabledKinds = Set(defaults.stringArray(forKey: Key.disabledKinds) ?? [])
+        self.lifetimeReclaimedBytes = Int64(defaults.integer(forKey: Key.lifetimeReclaimedBytes))
+        self.lifetimeReclaimedCount = defaults.integer(forKey: Key.lifetimeReclaimedCount)
     }
 
     var enabledKinds: Set<ArtifactKind> {
