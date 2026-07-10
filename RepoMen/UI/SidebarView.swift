@@ -20,7 +20,14 @@ struct SidebarView: View {
     private func row(for entry: SidebarEntry, label: String, symbol: String) -> some View {
         let stats = model.stats(for: entry)
         return HStack {
-            Label(label, systemImage: symbol)
+            // Category glyphs carry their tint here too — the color language the
+            // table rows speak is taught where the categories live.
+            Label {
+                Text(label)
+            } icon: {
+                Image(systemName: symbol)
+                    .foregroundStyle(tint(for: entry))
+            }
             Spacer()
             if stats.count > 0 {
                 Text(Format.bytes(stats.bytes))
@@ -30,5 +37,10 @@ struct SidebarView: View {
             }
         }
         .tag(entry)
+    }
+
+    private func tint(for entry: SidebarEntry) -> Color {
+        if case .category(let category) = entry { return category.tint }
+        return .secondary
     }
 }
