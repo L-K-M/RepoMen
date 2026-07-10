@@ -43,7 +43,10 @@ See [PLAN.md](PLAN.md) for the full design and trust model.
 ## Install
 
 Download the latest `.dmg` from [Releases](https://github.com/L-K-M/RepoMen/releases).
-The app is **unsigned** (no Developer ID / notarization), so on first launch run
+The app is ad-hoc signed but has **no Developer ID and is not notarized**, so
+Gatekeeper warns on first launch. Either right-click the app → **Open** → **Open**
+(on macOS 15+ additionally confirm under System Settings → Privacy & Security →
+**Open Anyway**), or run
 `xattr -dr com.apple.quarantine /Applications/RepoMen.app`
 
 macOS will ask the standard Files-and-Folders question the first time RepoMen scans a
