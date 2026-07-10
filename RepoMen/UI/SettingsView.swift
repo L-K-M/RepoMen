@@ -54,10 +54,23 @@ private struct FoldersSettingsView: View {
             Text("Scan these folders for project build artifacts:")
             List(selection: $selectedRoot) {
                 ForEach(preferences.scanRoots, id: \.self) { root in
-                    Text(Format.abbreviatePath(root)).tag(root)
+                    HStack(spacing: 6) {
+                        Text(Format.abbreviatePath(root))
+                        if isOutsideHome(root) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(.orange)
+                                .help("Outside your home folder — findings here can be listed but never reclaimed")
+                        }
+                    }
+                    .tag(root)
                 }
             }
             .frame(minHeight: 110)
+            if let warning = outsideHomeWarning {
+                Label(warning, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
             HStack {
                 Button("Add Folder…") { addRoots() }
                 Button("Remove") {
@@ -97,6 +110,21 @@ private struct FoldersSettingsView: View {
         for url in panel.urls where !preferences.scanRoots.contains(url.path) {
             preferences.scanRoots.append(url.path)
         }
+    }
+
+    /// Reclaiming is restricted to the home folder (PathGuards); a root elsewhere
+    /// scans fine but every find would fail at reclaim time — say so up front, in the
+    /// list, not in a post-confirmation error.
+    private func isOutsideHome(_ root: String) -> Bool {
+        let home = NSHomeDirectory()
+        return root != home && !root.hasPrefix(home + "/")
+    }
+
+    private var outsideHomeWarning: String? {
+        let count = preferences.scanRoots.filter(isOutsideHome).count
+        guard count > 0 else { return nil }
+        let folders = count == 1 ? "1 folder is" : "\(count) folders are"
+        return "\(folders) outside your home folder — findings there can be listed but never reclaimed."
     }
 }
 

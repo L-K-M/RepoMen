@@ -48,11 +48,22 @@ enum Scanner {
         return items
     }
 
-    /// Drops roots nested inside other roots so nothing is scanned (or reported) twice.
+    /// Drops duplicate roots and roots nested inside other roots so nothing is scanned
+    /// (or reported) twice. Existing paths are canonicalized to their true on-disk
+    /// spelling first, so case-variant duplicates on (default, case-insensitive) APFS
+    /// collapse too — item ids are paths, and one physical folder must yield one id.
     static func normalizedRoots(_ roots: [URL]) -> [URL] {
-        let standardized = roots.map { $0.standardizedFileURL }
-        return standardized.filter { candidate in
-            !standardized.contains { other in
+        let canonical = roots.map { url -> URL in
+            let standardized = url.standardizedFileURL
+            if let path = (try? standardized.resourceValues(forKeys: [.canonicalPathKey]))?.canonicalPath {
+                return URL(fileURLWithPath: path)
+            }
+            return standardized   // nonexistent paths keep their given spelling
+        }
+        var seen = Set<String>()
+        return canonical.filter { candidate in
+            guard seen.insert(candidate.path).inserted else { return false }
+            return !canonical.contains { other in
                 other.path != candidate.path
                     && candidate.path.hasPrefix(other.path + "/")
             }

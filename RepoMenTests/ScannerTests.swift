@@ -131,4 +131,25 @@ final class ScannerTests: XCTestCase {
         XCTAssertEqual(Scanner.normalizedRoots([outer, inner, sibling]).map(\.path),
                        ["/a/b", "/a/bc"])
     }
+
+    func testNormalizedRootsDropExactDuplicates() {
+        let a = URL(fileURLWithPath: "/a/b")
+        let b = URL(fileURLWithPath: "/a/b")
+        XCTAssertEqual(Scanner.normalizedRoots([a, b]).map(\.path), ["/a/b"])
+    }
+
+    func testNormalizedRootsCollapseCaseVariantsOfExistingDirs() throws {
+        // The temp root exists, so canonicalization can resolve the true spelling.
+        try make(dirs: ["Projects"], files: [])
+        let upper = root.appendingPathComponent("Projects")
+        let lower = root.appendingPathComponent("projects")
+        let normalized = Scanner.normalizedRoots([upper, lower])
+        // On a case-insensitive filesystem both spellings are one folder; on a
+        // case-sensitive one only the created spelling exists and the other stays.
+        let existing = normalized.filter {
+            fileManager.fileExists(atPath: $0.path)
+        }
+        XCTAssertEqual(existing.count, 1,
+                       "one physical folder must survive normalization once: \(normalized)")
+    }
 }
