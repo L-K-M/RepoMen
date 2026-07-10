@@ -94,7 +94,14 @@ final class UpdateChecker: ObservableObject {
     /// elapsed. Silent unless a newer, non-skipped version is found.
     func checkInBackground() {
         guard automaticChecksEnabled else { return }
-        if let last = lastCheckDate, Date().timeIntervalSince(last) < configuration.minimumCheckInterval { return }
+        // The timer fires with up to 10% tolerance, and lastCheckDate is stamped when
+        // the previous check *completed* — throttling against the full interval would
+        // skip every slightly-early fire, quietly turning "daily" into every other day.
+        let slack = configuration.minimumCheckInterval * 0.15
+        if let last = lastCheckDate,
+           Date().timeIntervalSince(last) < configuration.minimumCheckInterval - slack {
+            return
+        }
         performCheck(userInitiated: false)
     }
 
@@ -111,11 +118,23 @@ final class UpdateChecker: ObservableObject {
         set { defaults.set(newValue, forKey: key("skippedVersion")) }
     }
 
+    /// The release tag (or the app's own version string) had no leading number to
+    /// compare — "you're up to date" would be a false assurance here.
+    private struct UnparseableVersionError: LocalizedError {
+        let tag: String
+        var errorDescription: String? {
+            "The release version “\(tag)” could not be compared to this build's version."
+        }
+    }
+
     private func performCheck(userInitiated: Bool) {
-        guard !isChecking else { return }
-        isChecking = true
         Task { @MainActor [weak self] in
             guard let self else { return }
+            // Guard and flag flip together on the main actor: testing `isChecking` on
+            // the caller's thread raced the main-actor reset and, for a background
+            // caller, published an @Published change off the main thread.
+            guard !self.isChecking else { return }
+            self.isChecking = true
             defer { self.isChecking = false }
             do {
                 let release = try await self.client.latestRelease(includePrereleases: self.configuration.allowPrereleases)
@@ -124,7 +143,9 @@ final class UpdateChecker: ObservableObject {
 
                 guard let remote = SemanticVersion(release.tagName),
                       let current = SemanticVersion(self.configuration.currentVersion) else {
-                    if userInitiated { self.presentUpToDate() }
+                    if userInitiated {
+                        self.presentError(UnparseableVersionError(tag: release.tagName))
+                    }
                     return
                 }
                 if remote > current {
