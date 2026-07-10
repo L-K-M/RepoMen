@@ -52,7 +52,9 @@ enum RuleCatalog {
         .init(kind: .nodeModules, directoryNames: ["node_modules"],
               anchors: [.sibling("package.json")]),
         .init(kind: .jsBuildOutput,
-              directoryNames: [".next", ".nuxt", ".turbo", ".parcel-cache", ".svelte-kit", ".angular"],
+              directoryNames: [".next", ".nuxt", ".turbo", ".parcel-cache", ".svelte-kit",
+                               ".angular", ".astro", ".expo", ".docusaurus", ".output",
+                               ".cache"],
               anchors: [.sibling("package.json")]),
         .init(kind: .swiftPMBuild, directoryNames: [".build"],
               anchors: [.sibling("Package.swift")]),
@@ -86,6 +88,12 @@ enum RuleCatalog {
               anchors: [.siblingSuffix(".cabal")]),
         .init(kind: .zigBuild, directoryNames: ["zig-cache", ".zig-cache", "zig-out"],
               anchors: [.sibling("build.zig")]),
+        // `vendor` is a generic name: without one of these anchors it might hold real,
+        // hand-vendored code — so the anchor is the whole safety story here.
+        .init(kind: .phpVendor, directoryNames: ["vendor"],
+              anchors: [.sibling("composer.json")]),
+        .init(kind: .goVendor, directoryNames: ["vendor"],
+              anchors: [.sibling("go.mod")]),
     ]
 
     /// Directory names that are always build debris and never worth descending into,
@@ -95,7 +103,8 @@ enum RuleCatalog {
     static let neverDescend: Set<String> = [
         "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
         ".tox", ".build", ".dart_tool", ".stack-work", "dist-newstyle", ".next",
-        ".nuxt", ".turbo", ".parcel-cache", ".svelte-kit", ".angular", "zig-cache",
+        ".nuxt", ".turbo", ".parcel-cache", ".svelte-kit", ".angular", ".astro",
+        ".expo", ".docusaurus", ".output", ".cache", "zig-cache",
         ".zig-cache", ".venv", "venv", "Pods", ".gradle",
     ]
 
