@@ -83,6 +83,37 @@ final class KnownCachesTests: XCTestCase {
         XCTAssertEqual(items(excluded: [excluded]).map(\.kind), [.pipCache])
     }
 
+    func testNewToolCachesAppear() throws {
+        try make(["Library/Caches/ms-playwright/chromium-1105",
+                  "Library/Caches/ms-playwright/webkit-1857",
+                  ".cargo/registry/src/index.crates.io-abc",
+                  ".pub-cache/hosted"])
+        let found = items()
+        let labels = Set(found.map(\.label))
+        XCTAssertTrue(labels.contains("Playwright browsers · chromium-1105"))
+        XCTAssertTrue(labels.contains("Playwright browsers · webkit-1857"))
+        XCTAssertTrue(labels.contains("Cargo registry sources"))
+        XCTAssertTrue(labels.contains("Dart pub cache"))
+    }
+
+    func testRunningIDEGetsWarning() throws {
+        try make(["Library/Application Support/Code/CachedData"])
+        let found = items(isRunning: { $0 == "com.microsoft.VSCode" })
+        XCTAssertEqual(found.first?.warning, "VS Code is running — quit it before reclaiming")
+        XCTAssertNil(items().first?.warning)
+    }
+
+    func testArcUserDataProfileCaches() throws {
+        try make(["Library/Caches/Arc/User Data/Default/Cache"])
+        let found = items()
+        // The nested layout is reported once (via the "Arc/User Data" spec) even
+        // though the fallback "Arc" spec also reaches the same directory.
+        XCTAssertEqual(found.count, 1)
+        XCTAssertEqual(found.first?.kind, .browserCache)
+        XCTAssertEqual(found.first?.path,
+                       home.appendingPathComponent("Library/Caches/Arc/User Data/Default/Cache").path)
+    }
+
     func testAllowedRootsCoverEverySpec() {
         let roots = KnownCaches.allowedRoots(home: home)
         for spec in KnownCaches.specs {

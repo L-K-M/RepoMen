@@ -60,6 +60,22 @@ final class RuleCatalogTests: XCTestCase {
                      "bin without a project file could be anything — leave it alone")
     }
 
+    func testVendorNeedsComposerOrGoAnchor() {
+        XCTAssertEqual(match("vendor", siblings: ["composer.json"])?.rule.kind, .phpVendor)
+        XCTAssertEqual(match("vendor", siblings: ["go.mod"])?.rule.kind, .goVendor)
+        XCTAssertNil(match("vendor", siblings: ["README.md"]),
+                     "hand-vendored code without a manifest must never match")
+    }
+
+    func testNewJSBuildOutputsNeedPackageJSON() {
+        for name in [".astro", ".expo", ".docusaurus", ".output", ".cache"] {
+            XCTAssertEqual(match(name, siblings: ["package.json"])?.rule.kind, .jsBuildOutput,
+                           "\(name) should match with a package.json anchor")
+            XCTAssertNil(match(name, siblings: []),
+                         "\(name) must not match without the anchor")
+        }
+    }
+
     // MARK: Inner anchors
 
     func testVenvNeedsPyvenvCfgInside() {
@@ -105,8 +121,12 @@ final class RuleCatalogTests: XCTestCase {
     func testNeverDescendCoversUnambiguousArtifacts() {
         XCTAssertTrue(RuleCatalog.neverDescend.contains("node_modules"))
         XCTAssertTrue(RuleCatalog.neverDescend.contains("__pycache__"))
+        XCTAssertTrue(RuleCatalog.neverDescend.contains(".astro"))
+        XCTAssertTrue(RuleCatalog.neverDescend.contains(".cache"))
         XCTAssertFalse(RuleCatalog.neverDescend.contains("build"),
                        "generic names might be ordinary folders — the scanner must descend")
         XCTAssertFalse(RuleCatalog.neverDescend.contains("target"))
+        XCTAssertFalse(RuleCatalog.neverDescend.contains("vendor"),
+                       "unanchored vendor dirs may hold real code — the scanner must descend")
     }
 }
