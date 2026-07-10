@@ -1,5 +1,10 @@
 # fable.md — RepoMen 0.1.0 review
 
+> **Superseded by [ANALYSIS.md](ANALYSIS.md).** This file is the frozen review record
+> for commit `a7190a7` — the finding IDs referenced by the review PRs live here.
+> ANALYSIS.md carries the open items forward and is the document future work is based
+> on.
+
 A full review of RepoMen as of commit `a7190a7`, produced by a multi-lens pass over the
 entire codebase (scan/reclaim core, app layer, UI, updates module, CI/CD, docs), with
 every objective claim adversarially re-verified against the source. Findings are grouped
