@@ -42,8 +42,19 @@ jobs:
           xcodebuild \
             -project "$PROJECT" -scheme "$SCHEME" \
             -destination 'platform=macOS' \
+            -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO \
             clean test | xcbeautify
+
+      # A release run that dies here would otherwise leave only the condensed log —
+      # ship the same diagnostics CI uploads, so a flaky failure is debuggable.
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestResults
+          path: TestResults.xcresult
+          if-no-files-found: ignore
 
       - name: Build (Release, no Developer ID signing)
         run: |

@@ -9,10 +9,13 @@ on:
 permissions:
   contents: read
 
-# Cancel superseded PR runs, but never an in-progress main run — a permanently
-# "cancelled" main commit masks breakage and breaks CI bisection.
+# Cancel superseded PR runs, but keep every push run — GitHub always cancels the
+# *pending* run in a group when a newer one queues (regardless of
+# cancel-in-progress), so per-ref grouping on pushes would leave burst-pushed main
+# commits permanently "cancelled", masking breakage and breaking CI bisection.
+# Grouping pushes per-SHA gives each commit its own run.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
