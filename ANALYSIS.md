@@ -28,6 +28,16 @@ fable.md and the PR descriptions.
 Cross-PR notes: #2 and #4 both touch `Reclaimer.reclaim`'s preamble — if they conflict
 on merge, keep both changes. #2 composes with #1's model-side scan/reclaim exclusion.
 
+> **⚠ CI is not running in this repository.** Every Actions job — including the
+> original `main` commit `a7190a7`, before any review changes — "fails" within ~2
+> seconds with no runner assigned and no logs. That is the signature of macOS runners
+> being unavailable to the account (this repo is private; macOS runners bill at 10×
+> minutes, and an exhausted free tier or a zero spending limit fails jobs instantly).
+> Until Actions billing/spending is sorted out in the GitHub account settings, none of
+> the review PRs have been machine-verified: they were written without a local Xcode
+> toolchain and reviewed by hand only. Run the suite locally
+> (`xcodebuild … clean test`) or fix Actions before merging.
+
 ---
 
 ## Open: performance
