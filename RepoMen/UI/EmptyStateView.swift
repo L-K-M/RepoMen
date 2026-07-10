@@ -8,15 +8,36 @@ struct EmptyStateView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var preferences: Preferences
 
+    @State private var diskFreeBytes: Int64?
+    @State private var diskTotalBytes: Int64?
+
     /// A completed scan with zero findings leaves the model in `.ready`; before any
     /// scan (or after cancelling an empty one) it is `.idle`.
     private var scanCameUpEmpty: Bool { model.phase == .ready }
 
     var body: some View {
         VStack(spacing: 14) {
-            Image(systemName: scanCameUpEmpty ? "checkmark.seal" : "internaldrive")
-                .font(.system(size: 44))
-                .foregroundStyle(scanCameUpEmpty ? AnyShapeStyle(.green) : AnyShapeStyle(.secondary))
+            if scanCameUpEmpty {
+                Image(systemName: "checkmark.seal")
+                    .font(.system(size: 44))
+                    .foregroundStyle(.green)
+            } else if let free = diskFreeBytes, let total = diskTotalBytes, total > 0 {
+                // The welcome icon earns its place: the first thing a new user sees
+                // is the problem RepoMen exists to solve. Read once; no monitoring.
+                Gauge(value: Double(total - free), in: 0...Double(total)) {
+                    Image(systemName: "internaldrive")
+                } currentValueLabel: {
+                    Text(Format.bytes(free))
+                        .font(.caption2)
+                }
+                .gaugeStyle(.accessoryCircularCapacity)
+                .tint(Double(free) < Double(total) * 0.1 ? .orange : .teal)
+                .help("\(Format.bytes(free)) of \(Format.bytes(total)) free")
+            } else {
+                Image(systemName: "internaldrive")
+                    .font(.system(size: 44))
+                    .foregroundStyle(.secondary)
+            }
             Text(scanCameUpEmpty ? "Nothing to repossess" : "Repossess your disk")
                 .font(.title2)
                 .bold()
@@ -70,5 +91,13 @@ struct EmptyStateView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(30)
+        .task {
+            let home = URL(fileURLWithPath: NSHomeDirectory())
+            let values = try? home.resourceValues(forKeys: [
+                .volumeAvailableCapacityForImportantUsageKey, .volumeTotalCapacityKey,
+            ])
+            diskFreeBytes = values?.volumeAvailableCapacityForImportantUsage
+            diskTotalBytes = (values?.volumeTotalCapacity).map(Int64.init)
+        }
     }
 }

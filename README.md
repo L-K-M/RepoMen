@@ -63,6 +63,11 @@ protected folder (e.g. `~/Documents`).
 Right-click any row to reveal it in Finder or exclude it from future scans. Settings
 (⌘,) manages scan folders, per-kind rule toggles, and Trash vs. permanent delete.
 
+Sizes are allocated-space estimates: hardlinked files are counted once, but APFS
+*clones* (how pnpm and uv share files across projects) can't be attributed per copy —
+the same limitation `du` and Finder have — so the space actually freed can be less
+than the number shown.
+
 ## Build
 
 ```bash

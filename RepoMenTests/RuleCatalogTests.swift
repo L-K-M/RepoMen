@@ -67,6 +67,15 @@ final class RuleCatalogTests: XCTestCase {
                      "hand-vendored code without a manifest must never match")
     }
 
+    func testTerraformNeedsLockfileOrTfAnchor() {
+        XCTAssertEqual(match(".terraform", siblings: [".terraform.lock.hcl"])?.rule.kind,
+                       .terraformCache)
+        XCTAssertEqual(match(".terraform", siblings: ["main.tf"])?.rule.kind,
+                       .terraformCache)
+        XCTAssertNil(match(".terraform", siblings: ["notes.txt"]),
+                     "a .terraform dir without a Terraform project next to it proves nothing")
+    }
+
     func testNewJSBuildOutputsNeedPackageJSON() {
         for name in [".astro", ".expo", ".docusaurus", ".output", ".cache"] {
             XCTAssertEqual(match(name, siblings: ["package.json"])?.rule.kind, .jsBuildOutput,
