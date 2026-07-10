@@ -25,13 +25,22 @@ enum Scanner {
     /// Directories never worth entering regardless of rules.
     private static let alwaysSkip: Set<String> = [".git", ".svn", ".hg", ".Trash"]
 
+    /// The real user Library: the deep scan never enters it, whatever the configured
+    /// roots say — `KnownCaches` owns the reclaimable spots under it, and everything
+    /// else there (Containers, Mail, Application Support) is app data that can look
+    /// exactly like a build artifact (an app-shipped node_modules with its
+    /// package.json). PLAN.md's "never enters ~/Library/Containers", enforced.
+    private static let userLibraryPath = FileManager.default
+        .homeDirectoryForCurrentUser.appendingPathComponent("Library").path
+
     /// Synchronous walk — call from a background task; honors `Task` cancellation.
     /// `progress` is invoked on the walking thread with the directory being visited.
     static func scan(_ config: ScanConfiguration,
                      fileManager: FileManager = .default,
                      progress: ((String) -> Void)? = nil) -> [CleanableItem] {
         var items: [CleanableItem] = []
-        for root in normalizedRoots(config.roots) {
+        for root in normalizedRoots(config.roots)
+        where !PathGuards.isUnder(root.path, root: userLibraryPath) {
             walk(directory: root, depth: 0, config: config,
                  fileManager: fileManager, progress: progress, into: &items)
             if Task.isCancelled { break }
@@ -59,7 +68,8 @@ enum Scanner {
         guard depth <= config.maxDepth, !Task.isCancelled else { return }
         progress?(directory.path)
 
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .isPackageKey]
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .isPackageKey,
+                                      .isHiddenKey]
         guard let children = try? fileManager.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: keys,
             options: []) else { return }
@@ -74,7 +84,8 @@ enum Scanner {
 
             let name = child.lastPathComponent
             let childPath = child.path
-            guard !config.excludedPaths.contains(childPath) else { continue }
+            guard !config.excludedPaths.contains(childPath),
+                  childPath != userLibraryPath else { continue }
 
             if let match = RuleCatalog.match(
                 directoryName: name,
@@ -91,17 +102,20 @@ enum Scanner {
                 continue    // the whole artifact is one item — never descend into it
             }
 
-            guard shouldDescend(into: name, isPackage: values?.isPackage == true) else { continue }
+            guard shouldDescend(into: name, isPackage: values?.isPackage == true,
+                                isHidden: values?.isHidden == true) else { continue }
             walk(directory: child, depth: depth + 1, config: config,
                  fileManager: fileManager, progress: progress, into: &items)
         }
     }
 
-    private static func shouldDescend(into name: String, isPackage: Bool) -> Bool {
+    private static func shouldDescend(into name: String, isPackage: Bool,
+                                      isHidden: Bool) -> Bool {
         if isPackage { return false }
         if alwaysSkip.contains(name) { return false }
         if RuleCatalog.neverDescend.contains(name) { return false }
         if name.hasPrefix(".") { return false }   // catalog rules for hidden names ran above
+        if isHidden { return false }   // flag-hidden trees (~/Library) are equally out of scope
         return true
     }
 

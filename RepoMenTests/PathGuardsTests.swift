@@ -46,6 +46,24 @@ final class PathGuardsTests: XCTestCase {
         XCTAssertNotNil(violation("/Users/test/.colima/default/disk"))
     }
 
+    func testDenylistIsCaseInsensitive() {
+        // APFS is case-insensitive by default: ~/.DOCKER *is* ~/.docker on disk.
+        XCTAssertNotNil(violation("/Users/test/.DOCKER/data/vms"))
+        XCTAssertNotNil(violation("/Users/test/dev/orbstack/machine"))
+        XCTAssertNotNil(violation("/Users/test/Pictures/Photos.PHOTOSLIBRARY/originals"))
+    }
+
+    func testRejectsUmbrellaAreasThemselves() {
+        // Depth arithmetic alone would allow these depth-2 paths wholesale.
+        XCTAssertNotNil(violation("/Users/test/Library/Caches"))
+        XCTAssertNotNil(violation("/Users/test/Library/Application Support"))
+        XCTAssertNotNil(violation("/Users/test/Library/Developer"))
+        XCTAssertNotNil(violation("/Users/test/Library/Developer/Xcode"))
+        XCTAssertNil(violation("/Users/test/Library/Caches/pip"),
+                     "concrete entries INSIDE the umbrellas stay reclaimable")
+        XCTAssertNil(violation("/Users/test/Library/Developer/Xcode/DerivedData/App-abc"))
+    }
+
     func testIsUnder() {
         XCTAssertTrue(PathGuards.isUnder("/a/b/c", root: "/a/b"))
         XCTAssertTrue(PathGuards.isUnder("/a/b", root: "/a/b"))

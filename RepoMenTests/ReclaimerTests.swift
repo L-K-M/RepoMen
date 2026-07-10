@@ -93,6 +93,51 @@ final class ReclaimerTests: XCTestCase {
         XCTAssertNotNil(outcomes.first { $0.item.path == notOK.path }?.failure)
     }
 
+    func testRefusesItemThatBecameASymlink() throws {
+        // Between scan and reclaim the artifact path was replaced by a symlink.
+        let target = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("RepoMenSymlinkTarget-\(UUID().uuidString)")
+        try fileManager.createDirectory(at: target, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: target) }
+
+        let item = try makeProject()
+        try fileManager.removeItem(atPath: item.path)
+        try fileManager.createSymbolicLink(atPath: item.path,
+                                           withDestinationPath: target.path)
+
+        let outcomes = Reclaimer.reclaim([item], method: .delete, home: home)
+        XCTAssertNotNil(outcomes.first?.failure)
+        XCTAssertTrue(fileManager.fileExists(atPath: target.path),
+                      "the link target must survive")
+    }
+
+    func testRefusesPathEscapingHomeThroughSymlinkedParent() throws {
+        // ~/dev/proj is now a symlink to a directory outside home; the item's lexical
+        // path still reads as inside home, but the directory physically is not.
+        let outside = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("RepoMenOutsideProj-\(UUID().uuidString)")
+        try fileManager.createDirectory(at: outside.appendingPathComponent("target/debug"),
+                                        withIntermediateDirectories: true)
+        try Data("[package]".utf8).write(to: outside.appendingPathComponent("Cargo.toml"))
+        defer { try? fileManager.removeItem(at: outside) }
+
+        try fileManager.createDirectory(at: home.appendingPathComponent("dev"),
+                                        withIntermediateDirectories: true)
+        try fileManager.createSymbolicLink(
+            at: home.appendingPathComponent("dev/proj"),
+            withDestinationURL: outside)
+        let item = CleanableItem(
+            label: "proj/target", kind: .rustTarget,
+            path: home.appendingPathComponent("dev/proj/target").path,
+            anchorPaths: [home.appendingPathComponent("dev/proj/Cargo.toml").path],
+            isKnownCache: false)
+
+        let outcomes = Reclaimer.reclaim([item], method: .delete, home: home)
+        XCTAssertNotNil(outcomes.first?.failure,
+                        "the resolved path leaves home — reclaim must refuse")
+        XCTAssertTrue(fileManager.fileExists(atPath: outside.appendingPathComponent("target").path))
+    }
+
     func testNestedSelectionsCollapseToOutermost() throws {
         let item = try makeProject()
         let nested = CleanableItem(label: "proj/target/debug", kind: .rustTarget,
