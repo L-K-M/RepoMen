@@ -23,16 +23,20 @@ enum Reclaimer {
         let failure: String?
     }
 
+    /// `progress` is invoked on the calling thread before each item is processed,
+    /// with the 1-based position, the batch total, and the item itself.
     static func reclaim(_ items: [CleanableItem],
                         method: Method,
                         home: URL = FileManager.default.homeDirectoryForCurrentUser,
-                        fileManager: FileManager = .default) -> [Outcome] {
+                        fileManager: FileManager = .default,
+                        progress: ((_ current: Int, _ total: Int, _ item: CleanableItem) -> Void)? = nil) -> [Outcome] {
         let keptPaths = PathGuards.dedupeNested(items.map(\.path))
         let kept = items.filter { keptPaths.contains($0.path) }
         let cacheRoots = KnownCaches.allowedRoots(home: home)
 
         var outcomes: [Outcome] = []
-        for item in kept {
+        for (index, item) in kept.enumerated() {
+            progress?(index + 1, kept.count, item)
             if let failure = verify(item, home: home, cacheRoots: cacheRoots, fileManager: fileManager) {
                 Log.reclaim.warning("skipped \(item.path, privacy: .public): \(failure, privacy: .public)")
                 outcomes.append(Outcome(item: item, failure: failure))
