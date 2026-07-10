@@ -159,6 +159,7 @@ private struct SpaceTogglesChecked: ViewModifier {
     @EnvironmentObject private var model: AppModel
     let selection: Set<CleanableItem.ID>
 
+    @ViewBuilder
     func body(content: Content) -> some View {
         if #available(macOS 14.0, *) {
             content.onKeyPress(.space) {
