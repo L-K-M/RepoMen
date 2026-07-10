@@ -158,7 +158,9 @@ private struct RulesSettingsView: View {
             }
             .padding(20)
         }
-        .frame(height: 440)
+        // Grow with the display instead of always scrolling inside a 440pt cap —
+        // the rules list keeps gaining kinds.
+        .frame(minHeight: 440, idealHeight: 560, maxHeight: 680)
     }
 
     private func kinds(in category: ArtifactCategory) -> [ArtifactKind] {

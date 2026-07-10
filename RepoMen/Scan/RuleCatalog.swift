@@ -94,6 +94,10 @@ enum RuleCatalog {
               anchors: [.sibling("composer.json")]),
         .init(kind: .goVendor, directoryNames: ["vendor"],
               anchors: [.sibling("go.mod")]),
+        // Provider binaries + module cache; local state files (sibling
+        // terraform.tfstate) live OUTSIDE .terraform and are never touched.
+        .init(kind: .terraformCache, directoryNames: [".terraform"],
+              anchors: [.sibling(".terraform.lock.hcl"), .siblingSuffix(".tf")]),
     ]
 
     /// Directory names that are always build debris and never worth descending into,
@@ -105,7 +109,7 @@ enum RuleCatalog {
         ".tox", ".build", ".dart_tool", ".stack-work", "dist-newstyle", ".next",
         ".nuxt", ".turbo", ".parcel-cache", ".svelte-kit", ".angular", ".astro",
         ".expo", ".docusaurus", ".output", ".cache", "zig-cache",
-        ".zig-cache", ".venv", "venv", "Pods", ".gradle",
+        ".zig-cache", ".venv", "venv", "Pods", ".gradle", ".terraform",
     ]
 
     /// Names that match on the name alone (no anchors at all) — the reclaimer's
