@@ -132,6 +132,9 @@ struct DetailView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                Button("Stop") { model.cancelReclaim() }
+                    .controlSize(.small)
+                    .help("Finish the current item, leave the rest untouched")
             } else if model.isBusy {
                 ProgressView()
                     .controlSize(.small)
@@ -152,6 +155,21 @@ struct DetailView: View {
                         .foregroundStyle(.tertiary)
                         .monospacedDigit()
                         .help("Everything RepoMen has reclaimed for you since install")
+                }
+                if let offender = model.biggestOffender,
+                   !model.checkedIDs.contains(offender.id) {
+                    Button {
+                        model.setChecked(true, id: offender.id)
+                    } label: {
+                        Label("Biggest offender: \(offender.label) — \(Format.bytes(offender.sizeBytes))",
+                              systemImage: "scope")
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help("Click to check it for reclaiming")
                 }
             }
 
@@ -228,6 +246,7 @@ struct DetailView: View {
 
     private var summaryTitle: String {
         guard let summary = model.summary else { return "Space repossessed" }
+        if summary.cancelled { return "Reclaim stopped" }
         if summary.reclaimedCount == 0 { return "Nothing to repossess" }
         if !summary.failures.isEmpty { return "Partially repossessed" }
         return "Space repossessed"
@@ -250,6 +269,9 @@ struct DetailView: View {
             if summary.lifetimeReclaimedBytes > summary.freedBytes {
                 text += "\nLifetime total: \(Format.bytes(summary.lifetimeReclaimedBytes)) repossessed."
             }
+        }
+        if summary.cancelled {
+            text += "\n\nYou stopped the batch early — the remaining items are untouched and still checked."
         }
         if !summary.failures.isEmpty {
             text += "\n\nSkipped:\n" + summary.failures.prefix(8).joined(separator: "\n")

@@ -16,6 +16,8 @@ struct ReclaimSummary: Identifiable, Sendable {
     /// "label: reason" for every skipped/failed item.
     let failures: [String]
     let trashed: Bool
+    /// True when the user stopped the batch early — unprocessed items stay checked.
+    let cancelled: Bool
     /// Volume free space sampled just before/after the run (nil if unreadable) —
     /// lets the summary show the delta the user actually cares about.
     let freeBytesBefore: Int64?
@@ -105,6 +107,15 @@ final class AppModel: ObservableObject {
 
     var checkedItems: [CleanableItem] { items.filter { checkedIDs.contains($0.id) } }
     var checkedBytes: Int64 { checkedItems.reduce(0) { $0 + $1.sizeBytes } }
+
+    /// The largest measured item once a scan settles — every repo job has a prime
+    /// target. The footer offers it as a one-click check; it disappears naturally
+    /// once checked (or reclaimed).
+    var biggestOffender: CleanableItem? {
+        guard phase == .ready else { return nil }
+        return items.filter { $0.isMeasured && $0.sizeBytes > 0 }
+            .max { $0.sizeBytes < $1.sizeBytes }
+    }
 
     // MARK: Scanning
 
@@ -284,6 +295,15 @@ final class AppModel: ObservableObject {
     private(set) static var activeReclaimCount = 0
     static var terminateAfterReclaim = false
 
+    private var reclaimTask: Task<Void, Never>?
+
+    /// Stops the batch after the item currently being processed finishes — items
+    /// already reclaimed stay reclaimed and are reported; the rest stay checked so
+    /// the user can pick up where they stopped.
+    func cancelReclaim() {
+        reclaimTask?.cancel()
+    }
+
     func reclaimChecked() {
         let targets = checkedItems
         guard !targets.isEmpty, !isReclaiming else { return }
@@ -293,7 +313,7 @@ final class AppModel: ObservableObject {
         reclaimProgress = ReclaimProgress(current: 0, total: targets.count, label: "")
         let freeBefore = Self.volumeFreeBytes()
 
-        Task.detached(priority: .userInitiated) { [weak self] in
+        reclaimTask = Task.detached(priority: .userInitiated) { [weak self] in
             let outcomes = Reclaimer.reclaim(targets, method: method) { current, total, item in
                 Task { @MainActor [weak self] in
                     guard let self, self.isReclaiming else { return }
@@ -301,6 +321,7 @@ final class AppModel: ObservableObject {
                         current: current, total: total, label: item.label)
                 }
             }
+            let cancelled = Task.isCancelled
             await MainActor.run { [weak self] in
                 AppModel.activeReclaimCount -= 1
                 defer {
@@ -334,6 +355,7 @@ final class AppModel: ObservableObject {
                         outcome.failure.map { "\(outcome.item.label): \($0)" }
                     },
                     trashed: method == .trash,
+                    cancelled: cancelled,
                     freeBytesBefore: freeBefore,
                     freeBytesAfter: Self.volumeFreeBytes(),
                     lifetimeReclaimedBytes: self.preferences.lifetimeReclaimedBytes)

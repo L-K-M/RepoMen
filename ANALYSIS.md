@@ -77,11 +77,6 @@ and cross-item overlap (pnpm store vs projects) cannot be attributed. Consider a
 
 ## Open: UX
 
-### U3 (residual) — Cancel a running reclaim 🟠 M
-PR #2 added per-item progress and quit protection; a Stop button that finishes the
-current item and reports partial results in the summary is still open (`Reclaimer`
-would check a cancellation flag between items).
-
 ### U7 (residual) — Live refresh of running-app badges 🟡 S/M
 PR #2 surfaces recorded warnings in the confirmation dialog, but badges still reflect
 the scan-time snapshot. Re-snapshot `NSWorkspace` when the window becomes key (and
@@ -161,11 +156,6 @@ prefix filtering in the spec model (`AndroidStudio*`).
 ---
 
 ## Open: ideas (delight)
-
-### I8 — "Biggest offender" callout — S
-On scan completion, a tappable footer line: "Biggest offender: mega-app/node_modules —
-12.1 GB, last built 7 months ago" that selects/reveals the row. Gives the scan a
-punchline and teaches the check-then-reclaim interaction.
 
 ### I9 — Repossession receipt — M
 "Copy Receipt" after a reclaim: itemized plain-text/Markdown in the repo-man voice
