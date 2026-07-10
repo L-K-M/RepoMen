@@ -75,13 +75,19 @@ final class Preferences: ObservableObject {
             "Code", "code", "src", "repos", "git", "work", "dev",
         ]
         var roots: [String] = []
+        var seenCanonical = Set<String>()
         for candidate in candidates {
             let url = home.appendingPathComponent(candidate)
             var isDirectory: ObjCBool = false
-            if fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
-               isDirectory.boolValue {
-                roots.append(url.path)
-            }
+            guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue else { continue }
+            // fileExists is case-insensitive on default APFS, so probing "Projects"
+            // AND "projects" finds the same physical folder twice — which used to
+            // double every scan result. Dedupe on (and keep) the on-disk spelling.
+            let canonical = (try? url.resourceValues(forKeys: [.canonicalPathKey]))?
+                .canonicalPath ?? url.path
+            guard seenCanonical.insert(canonical).inserted else { continue }
+            roots.append(canonical)
         }
         // No recognizable dev folder: fall back to ~/Documents rather than nothing.
         if roots.isEmpty {
