@@ -17,7 +17,9 @@ struct GitHubReleaseClient {
         var errorDescription: String? {
             switch self {
             case .badResponse(let code): return "GitHub returned HTTP \(code)."
-            case .noReleases: return "No published releases were found."
+            // A 404 also covers a deleted or now-private repository, not only an
+            // empty releases page — don't make it sound permanent and intentional.
+            case .noReleases: return "No published releases were found — the repository may have moved or gone private."
             }
         }
     }
