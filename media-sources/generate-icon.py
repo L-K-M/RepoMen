@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Generates the RepoMen app icon: a disk platter being swept by a bold reclaim
-arrow, on the standard macOS rounded-square tile.
+"""RETIRED — generated the original 0.1.0 geometric icon (disk platter + reclaim
+arrow). The shipped icon is now a photographic crop (see media-sources/icon.png, the
+1024px master; the asset-catalog sizes are derived from it on the same macOS tile
+geometry: 824px rounded square, radius 186, centered on a transparent 1024 canvas).
+Running this script would overwrite the current icon with the old geometric one.
 
-This is the committed master's *source of truth* — the icon is pure geometry, so the
-generator (not a binary blob) is what gets edited. It renders with signed-distance
-functions at 2048px and box-downsamples to every size the asset catalog needs.
+Original description: a disk platter being swept by a bold reclaim arrow, on the
+standard macOS rounded-square tile. It renders with signed-distance functions at
+2048px and box-downsamples to every size the asset catalog needs.
 
 Outputs (all committed):
   media-sources/icon.png                                   1024px master
