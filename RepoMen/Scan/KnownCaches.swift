@@ -138,11 +138,13 @@ enum KnownCaches {
     }
 
     /// Roots a known-cache item must live under to be reclaimable — the `Reclaimer`'s
-    /// re-verification that a stored path really came from this catalog.
-    /// `~/Library/Caches` covers the browser vendors and every `Library/Caches` spec.
+    /// re-verification that a stored path really came from this catalog. Deliberately
+    /// the concrete catalog entries (every spec path plus every browser vendor dir),
+    /// NOT the ~/Library/Caches umbrella: the guards must never vouch for an
+    /// arbitrary app's cache directory — or the umbrella itself.
     static func allowedRoots(home: URL) -> [String] {
-        var roots = ["Library/Caches"]
-        roots += specs.map(\.relativePath).filter { !$0.hasPrefix("Library/Caches/") }
+        var roots = specs.map(\.relativePath)
+        roots += browsers.map { "Library/Caches/" + $0.cachesSubpath }
         return roots.map { home.appendingPathComponent($0).path }
     }
 

@@ -32,12 +32,15 @@ enum Reclaimer {
                         progress: ((_ current: Int, _ total: Int, _ item: CleanableItem) -> Void)? = nil) -> [Outcome] {
         let keptPaths = PathGuards.dedupeNested(items.map(\.path))
         let kept = items.filter { keptPaths.contains($0.path) }
-        let cacheRoots = KnownCaches.allowedRoots(home: home)
+        // Resolve once up front: every guard below compares physical locations, not
+        // spellings — a symlinked component must not smuggle a path past them.
+        let resolvedHome = home.resolvingSymlinksInPath()
+        let cacheRoots = KnownCaches.allowedRoots(home: resolvedHome)
 
         var outcomes: [Outcome] = []
         for (index, item) in kept.enumerated() {
             progress?(index + 1, kept.count, item)
-            if let failure = verify(item, home: home, cacheRoots: cacheRoots, fileManager: fileManager) {
+            if let failure = verify(item, home: resolvedHome, cacheRoots: cacheRoots, fileManager: fileManager) {
                 Log.reclaim.warning("skipped \(item.path, privacy: .public): \(failure, privacy: .public)")
                 outcomes.append(Outcome(item: item, failure: failure))
                 continue
@@ -59,9 +62,23 @@ enum Reclaimer {
         return outcomes
     }
 
+    /// `home` and `cacheRoots` arrive symlink-resolved; the item's path is resolved
+    /// here, so every check judges where the directory physically lives.
     private static func verify(_ item: CleanableItem, home: URL,
                                cacheRoots: [String], fileManager: FileManager) -> String? {
-        if let violation = PathGuards.validate(path: item.path, home: home.path) {
+        // The scanned artifact was a directory. If the path is now a symlink, the
+        // world changed underneath us — refuse (attributesOfItem does not traverse
+        // the final component, so this is an lstat).
+        if let type = (try? fileManager.attributesOfItem(atPath: item.path))?[.type] as? FileAttributeType,
+           type == .typeSymbolicLink {
+            return "is now a symlink, not the scanned directory"
+        }
+        // Between scan and reclaim a parent can become a symlink (say, ~/Projects
+        // moved to an external disk and linked back): the lexical path still reads
+        // "inside home" while the directory physically lives elsewhere. Guard the
+        // resolved location.
+        let resolvedPath = item.url.resolvingSymlinksInPath().path
+        if let violation = PathGuards.validate(path: resolvedPath, home: home.path) {
             return violation.reason
         }
         var isDirectory: ObjCBool = false
@@ -70,7 +87,7 @@ enum Reclaimer {
             return "no longer exists"
         }
         if item.isKnownCache {
-            guard cacheRoots.contains(where: { PathGuards.isUnder(item.path, root: $0) }) else {
+            guard cacheRoots.contains(where: { PathGuards.isUnder(resolvedPath, root: $0) }) else {
                 return "not inside a known cache location"
             }
         } else if !item.anchorPaths.isEmpty {

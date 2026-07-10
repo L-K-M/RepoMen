@@ -18,6 +18,21 @@ enum PathGuards {
         ".photoslibrary", ".musiclibrary", ".tvlibrary",
     ]
 
+    /// Umbrella directories (relative to home, compared case-insensitively) that are
+    /// never *themselves* reclaimable, whatever the depth arithmetic says — only
+    /// specific things inside them can be. Keeps a hypothetical catalog bug from ever
+    /// trashing ~/Library/Caches (or an app-data umbrella) wholesale.
+    static let protectedHomeRelativePaths: Set<String> = [
+        "library", "library/caches", "library/developer", "library/developer/xcode",
+        "library/application support", "library/containers", "library/group containers",
+        "library/preferences",
+    ]
+
+    // APFS is case-insensitive (and case-preserving) by default, so the hard blocks
+    // fold case before comparing — ~/.DOCKER *is* ~/.docker on disk.
+    private static let foldedDenylistComponents = Set(denylistComponents.map { $0.lowercased() })
+    private static let foldedDenylistSuffixes = denylistSuffixes.map { $0.lowercased() }
+
     /// Why a path was refused; shown to the user verbatim.
     struct Violation: Error, Equatable, CustomStringConvertible {
         let reason: String
@@ -26,8 +41,10 @@ enum PathGuards {
 
     /// Returns why `path` must not be reclaimed, or nil if it passes. The rules:
     /// absolute and free of `..`/`.` games, strictly inside the home folder, at least
-    /// two levels below it (no trashing `~/Documents` whole), and free of denylisted
-    /// components. Deliberately pure — `home` is injected so tests exercise it fully.
+    /// two levels below it (no trashing `~/Documents` whole), not an umbrella
+    /// directory itself, and free of denylisted components. Deliberately pure —
+    /// `home` is injected so tests exercise it fully; callers resolve symlinks first
+    /// (see `Reclaimer.verify`) so these string checks judge the physical location.
     static func validate(path: String, home: String) -> Violation? {
         guard path.hasPrefix("/") else {
             return Violation(reason: "not an absolute path")
@@ -40,15 +57,20 @@ enum PathGuards {
         guard path != home, path.hasPrefix(home + "/") else {
             return Violation(reason: "outside the home folder")
         }
+        let relativeToHome = String(path.dropFirst(home.count + 1)).lowercased()
+        if protectedHomeRelativePaths.contains(relativeToHome) {
+            return Violation(reason: "a protected system area — too broad to reclaim")
+        }
         let depthBelowHome = components.count - home.split(separator: "/").count
         guard depthBelowHome >= 2 else {
             return Violation(reason: "a top-level home folder — too broad to reclaim")
         }
         for component in components {
-            if denylistComponents.contains(component) {
+            let folded = component.lowercased()
+            if foldedDenylistComponents.contains(folded) {
                 return Violation(reason: "inside a protected area (\(component))")
             }
-            for suffix in denylistSuffixes where component.hasSuffix(suffix) {
+            for suffix in foldedDenylistSuffixes where folded.hasSuffix(suffix) {
                 return Violation(reason: "inside a protected library (\(component))")
             }
         }

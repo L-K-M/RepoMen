@@ -112,6 +112,18 @@ final class ScannerTests: XCTestCase {
                       "hidden trees (like .git) are out of scope for the deep scan")
     }
 
+    func testFlagHiddenDirsAreNotDescended() throws {
+        // ~/Library is hidden via the filesystem flag, not a dot prefix — the walk
+        // must treat flag-hidden trees exactly like dot-hidden ones.
+        try make(dirs: ["flagged/proj/target"], files: ["flagged/proj/Cargo.toml"])
+        var flagged = root.appendingPathComponent("flagged")
+        var values = URLResourceValues()
+        values.isHidden = true
+        try flagged.setResourceValues(values)
+
+        XCTAssertTrue(scan().isEmpty)
+    }
+
     func testNormalizedRootsDropNestedRoots() {
         let outer = URL(fileURLWithPath: "/a/b")
         let inner = URL(fileURLWithPath: "/a/b/c")
