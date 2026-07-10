@@ -24,7 +24,9 @@ enum Reclaimer {
     }
 
     /// `progress` is invoked on the calling thread before each item is processed,
-    /// with the 1-based position, the batch total, and the item itself.
+    /// with the 1-based position, the batch total, and the item itself. Honors task
+    /// cancellation *between* items: the item in flight always finishes (a
+    /// half-trashed tree helps nobody), the rest are left untouched.
     static func reclaim(_ items: [CleanableItem],
                         method: Method,
                         home: URL = FileManager.default.homeDirectoryForCurrentUser,
@@ -39,6 +41,7 @@ enum Reclaimer {
 
         var outcomes: [Outcome] = []
         for (index, item) in kept.enumerated() {
+            if Task.isCancelled { break }
             progress?(index + 1, kept.count, item)
             if let failure = verify(item, home: resolvedHome, cacheRoots: cacheRoots, fileManager: fileManager) {
                 Log.reclaim.warning("skipped \(item.path, privacy: .public): \(failure, privacy: .public)")

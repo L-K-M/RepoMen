@@ -18,13 +18,13 @@ final class ReclaimerTests: XCTestCase {
         try? fileManager.removeItem(at: home)
     }
 
-    private func makeProject() throws -> CleanableItem {
-        let target = home.appendingPathComponent("dev/proj/target")
+    private func makeProject(name: String = "proj") throws -> CleanableItem {
+        let target = home.appendingPathComponent("dev/\(name)/target")
         try fileManager.createDirectory(at: target.appendingPathComponent("debug"),
                                         withIntermediateDirectories: true)
-        let anchor = home.appendingPathComponent("dev/proj/Cargo.toml")
+        let anchor = home.appendingPathComponent("dev/\(name)/Cargo.toml")
         try Data("[package]".utf8).write(to: anchor)
-        return CleanableItem(label: "proj/target", kind: .rustTarget, path: target.path,
+        return CleanableItem(label: "\(name)/target", kind: .rustTarget, path: target.path,
                              anchorPaths: [anchor.path], isKnownCache: false)
     }
 
@@ -91,6 +91,22 @@ final class ReclaimerTests: XCTestCase {
         let outcomes = Reclaimer.reclaim([ok, notOK], method: .delete, home: home)
         XCTAssertNil(outcomes.first { $0.item.path == ok.path }?.failure)
         XCTAssertNotNil(outcomes.first { $0.item.path == notOK.path }?.failure)
+    }
+
+    func testCancelledTaskStopsBetweenItems() async throws {
+        let a = try makeProject(name: "projA")
+        let b = try makeProject(name: "projB")
+        let home = self.home!
+
+        let task = Task { () -> [Reclaimer.Outcome] in
+            // Simulate Stop landing before the batch loop starts.
+            withUnsafeCurrentTask { $0?.cancel() }
+            return Reclaimer.reclaim([a, b], method: .delete, home: home)
+        }
+        let outcomes = await task.value
+        XCTAssertTrue(outcomes.isEmpty, "a cancelled batch must not process items")
+        XCTAssertTrue(fileManager.fileExists(atPath: a.path))
+        XCTAssertTrue(fileManager.fileExists(atPath: b.path))
     }
 
     func testRefusesItemThatBecameASymlink() throws {
