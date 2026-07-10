@@ -44,6 +44,13 @@ final class AppModel: ObservableObject {
 
     let preferences: Preferences
     private var scanTask: Task<Void, Never>?
+    /// Monotonic scan token, bumped on every start/cancel. Every main-actor write a
+    /// detached scan task performs is guarded by it, so a superseded task (or its
+    /// still-running sizers) can never publish into a newer scan's state.
+    private var scanGeneration = 0
+    /// Measurements waiting to be applied to `items` in one batch (id → measurement).
+    private var pendingMeasurements: [String: DirectorySizer.Measurement] = [:]
+    private var flushScheduled = false
 
     init(preferences: Preferences = .shared) {
         self.preferences = preferences
@@ -52,6 +59,12 @@ final class AppModel: ObservableObject {
     // MARK: Derived state
 
     var isBusy: Bool { phase == .scanning || phase == .measuring }
+
+    /// While sizes stream in, rows keep a stable label/path order so they don't jump
+    /// under the cursor mid-click; the user's sort applies once measuring completes.
+    private static let measuringOrder: [KeyPathComparator<CleanableItem>] = [
+        KeyPathComparator(\.label), KeyPathComparator(\.path),
+    ]
 
     var visibleItems: [CleanableItem] {
         var filtered = items
@@ -64,7 +77,7 @@ final class AppModel: ObservableObject {
                     || $0.path.localizedCaseInsensitiveContains(searchText)
             }
         }
-        return filtered.sorted(using: sortOrder)
+        return filtered.sorted(using: phase == .measuring ? Self.measuringOrder : sortOrder)
     }
 
     func stats(for entry: SidebarEntry) -> (count: Int, bytes: Int64) {
@@ -82,7 +95,11 @@ final class AppModel: ObservableObject {
     // MARK: Scanning
 
     func startScan() {
+        guard !isReclaiming else { return }   // never walk the tree mid-deletion
         scanTask?.cancel()
+        scanGeneration += 1
+        let generation = scanGeneration
+        pendingMeasurements = [:]
         let config = ScanConfiguration(
             roots: preferences.scanRoots.map { URL(fileURLWithPath: $0) },
             excludedPaths: Set(preferences.excludedPaths),
@@ -104,7 +121,8 @@ final class AppModel: ObservableObject {
                 lastStatus = now
                 let display = Format.abbreviatePath(path)
                 Task { @MainActor [weak self] in
-                    guard let self, self.phase == .scanning else { return }
+                    guard let self, self.scanGeneration == generation,
+                          self.phase == .scanning else { return }
                     self.scanStatus = display
                 }
             }
@@ -116,19 +134,22 @@ final class AppModel: ObservableObject {
 
             let discovered = found + caches
             await MainActor.run { [weak self] in
-                guard let self else { return }
+                guard let self, self.scanGeneration == generation else { return }
                 self.items = discovered
                 self.phase = .measuring
                 self.scanStatus = "Measuring \(discovered.count) items…"
             }
 
             await Self.measureAll(discovered) { id, measurement in
-                Task { @MainActor [weak self] in self?.apply(measurement, to: id) }
+                Task { @MainActor [weak self] in
+                    self?.enqueue(measurement, for: id, generation: generation)
+                }
             }
 
             guard !Task.isCancelled else { return }
             await MainActor.run { [weak self] in
-                guard let self else { return }
+                guard let self, self.scanGeneration == generation else { return }
+                self.flushMeasurements()
                 self.phase = .ready
                 self.scanStatus = ""
                 Log.scan.info("scan finished: \(self.items.count) items")
@@ -138,12 +159,15 @@ final class AppModel: ObservableObject {
 
     func cancelScan() {
         scanTask?.cancel()
+        scanGeneration += 1        // orphan any in-flight status/measurement writes
+        pendingMeasurements = [:]
         phase = items.isEmpty ? .idle : .ready
         scanStatus = ""
     }
 
     /// Sizes all items with bounded concurrency — sizing hammers the disk, and four
-    /// walkers saturate an SSD without starving the UI.
+    /// walkers saturate an SSD without starving the UI. Cancelled (partial)
+    /// measurements are discarded, never reported.
     private nonisolated static func measureAll(
         _ items: [CleanableItem],
         apply: @escaping @Sendable (String, DirectorySizer.Measurement) -> Void
@@ -153,7 +177,11 @@ final class AppModel: ObservableObject {
             func addNext() {
                 guard let item = iterator.next() else { return }
                 group.addTask {
-                    apply(item.id, DirectorySizer.measure(item.url))
+                    let measurement = DirectorySizer.measure(item.url)
+                    // An aborted walk returns partial counts — dropping them keeps an
+                    // undersized artifact from ever being presented as fully measured.
+                    guard measurement.isComplete else { return }
+                    apply(item.id, measurement)
                 }
             }
             for _ in 0..<4 { addNext() }
@@ -164,11 +192,43 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func apply(_ measurement: DirectorySizer.Measurement, to id: String) {
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        items[index].sizeBytes = measurement.bytes
-        items[index].isMeasured = true
-        items[index].lastModified = measurement.newestModification
+    /// Measurements arrive one at a time from four concurrent sizers; applying each
+    /// individually would republish `items` (and re-render the window) once per item.
+    /// They pool here instead and land in a single mutation per flush interval.
+    private func enqueue(_ measurement: DirectorySizer.Measurement, for id: String,
+                         generation: Int) {
+        guard generation == scanGeneration else { return }
+        pendingMeasurements[id] = measurement
+        scheduleFlush()
+    }
+
+    private func scheduleFlush() {
+        guard !flushScheduled else { return }
+        flushScheduled = true
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard let self else { return }
+            self.flushScheduled = false
+            self.flushMeasurements()
+        }
+    }
+
+    /// Applies every pooled measurement in one `items` assignment. Safe to call at any
+    /// time: scan boundaries clear the pool, so nothing stale can ever land here.
+    private func flushMeasurements() {
+        guard !pendingMeasurements.isEmpty else { return }
+        let batch = pendingMeasurements
+        pendingMeasurements = [:]
+        var updated = items
+        let indexByID = Dictionary(updated.enumerated().map { ($1.id, $0) },
+                                   uniquingKeysWith: { first, _ in first })
+        for (id, measurement) in batch {
+            guard let index = indexByID[id] else { continue }
+            updated[index].sizeBytes = measurement.bytes
+            updated[index].isMeasured = true
+            updated[index].lastModified = measurement.newestModification
+        }
+        items = updated
     }
 
     // MARK: Selection
@@ -228,10 +288,13 @@ final class AppModel: ObservableObject {
 
     /// "Never suggest this again": persists the paths and drops the rows.
     func exclude(ids: Set<String>) {
-        for item in items where ids.contains(item.id) {
-            if !preferences.excludedPaths.contains(item.path) {
-                preferences.excludedPaths.append(item.path)
-            }
+        let existing = Set(preferences.excludedPaths)
+        let newPaths = items
+            .filter { ids.contains($0.id) && !existing.contains($0.path) }
+            .map(\.path)
+        if !newPaths.isEmpty {
+            // One assignment → one UserDefaults write, however many rows were excluded.
+            preferences.excludedPaths.append(contentsOf: newPaths)
         }
         items.removeAll { ids.contains($0.id) }
         checkedIDs.subtract(ids)
