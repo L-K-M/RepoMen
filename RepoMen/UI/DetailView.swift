@@ -258,8 +258,16 @@ struct DetailView: View {
             text = "Nothing was reclaimed."
         } else {
             let items = "\(summary.reclaimedCount) item\(summary.reclaimedCount == 1 ? "" : "s")"
-            text = "Reclaimed \(items) — \(Format.bytes(summary.freedBytes)) "
+            // Items reclaimed before sizing finished contribute 0 to freedBytes —
+            // report the floor honestly instead of a reassuringly wrong total.
+            let bytes = summary.unmeasuredReclaimed > 0
+                ? "at least \(Format.bytes(summary.freedBytes))"
+                : Format.bytes(summary.freedBytes)
+            text = "Reclaimed \(items) — \(bytes) "
                 + (summary.trashed ? "moved to the Trash." : "deleted.")
+            if summary.unmeasuredReclaimed > 0 {
+                text += "\n\(summary.unmeasuredReclaimed) item\(summary.unmeasuredReclaimed == 1 ? "was" : "s were") reclaimed before measuring finished, so the true total is higher."
+            }
             if summary.trashed {
                 text += "\n\nThe space frees up once you empty the Trash. Changed your mind? Right-click an item there and choose Put Back."
             } else if let before = summary.freeBytesBefore,

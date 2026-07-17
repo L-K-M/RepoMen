@@ -1,17 +1,15 @@
-import AppKit
 import SwiftUI
 
 /// Sortable results table. Checkboxes (not row selection) decide what gets reclaimed —
-/// row selection only feeds the context menu and the space-bar toggle, so a stray
-/// click can never arm anything.
+/// row selection only feeds the context menu, the Items menu, and the space-bar
+/// toggle, so a stray click can never arm anything.
 struct ItemTable: View {
     @EnvironmentObject private var model: AppModel
-    @State private var tableSelection: Set<CleanableItem.ID> = []
 
     var body: some View {
         let visible = model.visibleItems
         let maxVisibleBytes = visible.map(\.sizeBytes).max() ?? 0
-        return Table(visible, selection: $tableSelection, sortOrder: $model.sortOrder) {
+        return Table(visible, selection: $model.tableSelection, sortOrder: $model.sortOrder) {
             TableColumn("") { (item: CleanableItem) in
                 Toggle("", isOn: Binding(
                     get: { model.checkedIDs.contains(item.id) },
@@ -41,12 +39,12 @@ struct ItemTable: View {
             .width(min: 80, ideal: 110, max: 140)
         }
         .contextMenu(forSelectionType: CleanableItem.ID.self) { ids in
-            Button("Reveal in Finder") { reveal(ids) }
-            Button("Copy Path") { copyPaths(ids) }
+            Button("Reveal in Finder") { model.revealInFinder(ids: ids) }
+            Button("Copy Path") { model.copyPaths(ids: ids) }
             Divider()
-            Button("Check") { setChecked(true, ids: ids) }
+            Button("Check") { model.setChecked(true, ids: ids) }
                 .disabled(model.isReclaiming)
-            Button("Uncheck") { setChecked(false, ids: ids) }
+            Button("Uncheck") { model.setChecked(false, ids: ids) }
                 .disabled(model.isReclaiming)
             Divider()
             // Disabled mid-reclaim: excluding a row cannot save it from a batch that
@@ -54,7 +52,7 @@ struct ItemTable: View {
             Button("Exclude from Future Scans") { model.exclude(ids: ids) }
                 .disabled(model.isReclaiming)
         }
-        .modifier(SpaceTogglesChecked(selection: tableSelection))
+        .modifier(SpaceTogglesChecked(selection: model.tableSelection))
     }
 
     // MARK: Cells
@@ -74,11 +72,13 @@ struct ItemTable: View {
                         badge("slow to rebuild", tint: .yellow)
                     }
                     if let warning = item.warning {
-                        Label(warning, systemImage: "exclamationmark.triangle")
+                        // Icon only in the row — a full sentence here starves the
+                        // item label; the wording lives in the tooltip and the
+                        // reclaim confirmation.
+                        Image(systemName: "exclamationmark.triangle")
                             .font(.caption2)
                             .foregroundStyle(.orange)
-                            .lineLimit(1)
-                            .help(warning)   // truncation must never hide a safety signal
+                            .help(warning)   // the safety signal is never hidden
                     }
                 }
                 Text(Format.abbreviatePath(item.path))
@@ -133,23 +133,6 @@ struct ItemTable: View {
     }
 
     // MARK: Actions
-
-    private func setChecked(_ checked: Bool, ids: Set<String>) {
-        for id in ids { model.setChecked(checked, id: id) }
-    }
-
-    private func reveal(_ ids: Set<String>) {
-        let urls = model.items.filter { ids.contains($0.id) }.map(\.url)
-        guard !urls.isEmpty else { return }
-        NSWorkspace.shared.activateFileViewerSelecting(urls)
-    }
-
-    private func copyPaths(_ ids: Set<String>) {
-        let paths = model.items.filter { ids.contains($0.id) }.map(\.path)
-        guard !paths.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
-    }
 }
 
 /// Space toggles the checkboxes of the selected rows — the idiomatic "do the thing to

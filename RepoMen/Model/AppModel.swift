@@ -13,6 +13,9 @@ struct ReclaimSummary: Identifiable, Sendable {
     let id = UUID()
     let freedBytes: Int64
     let reclaimedCount: Int
+    /// How many reclaimed items had no finished measurement — `freedBytes` is then
+    /// a floor, not the truth ("at least X"), and the summary must say so.
+    let unmeasuredReclaimed: Int
     /// "label: reason" for every skipped/failed item.
     let failures: [String]
     let trashed: Bool
@@ -65,6 +68,11 @@ final class AppModel: ObservableObject {
     }
     @Published var searchText = ""
     @Published var summary: ReclaimSummary?
+
+    /// The table's row selection (checkboxes are separate — see `checkedIDs`).
+    /// Lives here, not in the view, so the Items menu and the context menu act on
+    /// the same rows.
+    @Published var tableSelection: Set<String> = []
 
     let preferences: Preferences
     private var scanTask: Task<Void, Never>?
@@ -188,7 +196,8 @@ final class AppModel: ObservableObject {
         let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
 
         items = []
-        checkedIDs = []
+        // The selection is NOT cleared: ids are stable paths, so a rescan keeps
+        // whatever is still found (intersected with the new results below).
         phase = .scanning
         scanStatus = "Looking for artifacts…"
         Log.scan.info("scan started: \(config.roots.map(\.path).joined(separator: ", "), privacy: .public)")
@@ -216,6 +225,8 @@ final class AppModel: ObservableObject {
             await MainActor.run { [weak self] in
                 guard let self, self.scanGeneration == generation else { return }
                 self.items = discovered
+                // Keep the user's checks across the rescan for anything still found.
+                self.checkedIDs = self.checkedIDs.intersection(discovered.map(\.id))
                 self.phase = .measuring
                 self.scanStatus = "Measuring \(discovered.count) items…"
             }
@@ -408,6 +419,7 @@ final class AppModel: ObservableObject {
                 self.summary = ReclaimSummary(
                     freedBytes: freedBytes,
                     reclaimedCount: reclaimed.count,
+                    unmeasuredReclaimed: reclaimed.filter { !$0.item.isMeasured }.count,
                     failures: outcomes.compactMap { outcome in
                         outcome.failure.map { "\(outcome.item.label): \($0)" }
                     },
@@ -441,5 +453,25 @@ final class AppModel: ObservableObject {
         }
         items.removeAll { ids.contains($0.id) }
         checkedIDs.subtract(ids)
+        tableSelection.subtract(ids)
+    }
+
+    // MARK: Row actions (shared by the context menu and the Items menu)
+
+    func setChecked(_ checked: Bool, ids: Set<String>) {
+        for id in ids { setChecked(checked, id: id) }
+    }
+
+    func revealInFinder(ids: Set<String>) {
+        let urls = items.filter { ids.contains($0.id) }.map(\.url)
+        guard !urls.isEmpty else { return }
+        NSWorkspace.shared.activateFileViewerSelecting(urls)
+    }
+
+    func copyPaths(ids: Set<String>) {
+        let paths = items.filter { ids.contains($0.id) }.map(\.path)
+        guard !paths.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
     }
 }
