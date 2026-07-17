@@ -22,7 +22,15 @@ struct WatchMenuContent: View {
         Button("Run Watch Check Now") { watchManager.runCheck() }
             .disabled(watchManager.isChecking || !watchManager.hasWatchedFolders)
         Divider()
-        Button("Settings…") { SettingsOpener.open() }
+        if #available(macOS 14.0, *) {
+            // SettingsLink is the public, selector-free way to open the Settings
+            // scene — and the only one that works from a menu-bar extra.
+            SettingsLink {
+                Text("Settings…")
+            }
+        } else {
+            Button("Settings…") { SettingsOpener.open() }
+        }
         Button("Quit RepoMen") { NSApp.terminate(nil) }
     }
 

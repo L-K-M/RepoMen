@@ -101,13 +101,20 @@ final class AppModel: ObservableObject {
     /// `checkedItems` and the sidebar badges stop being O(n) scans per access.
     private var itemsByID: [String: CleanableItem] = [:]
     private var cachedStats: [SidebarEntry: (count: Int, bytes: Int64)] = [:]
+    private var cancellables: Set<AnyCancellable> = []
 
     init(preferences: Preferences = .shared) {
         self.preferences = preferences
+        // An explicit sink + retained cancellable: with `assign(to:)` the debounced
+        // value silently never landed (no didSet, no invalidation) and the filter
+        // stayed stuck on "" — search appeared to do nothing.
         $searchText
             .removeDuplicates()
             .debounce(for: .milliseconds(150), scheduler: DispatchQueue.main)
-            .assign(to: &$debouncedSearchText)
+            .sink { [weak self] text in
+                self?.debouncedSearchText = text
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: Derived state

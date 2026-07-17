@@ -1,20 +1,14 @@
 import Foundation
 import ServiceManagement
 
-/// "Open RepoMen automatically when you log in" (Settings → General).
+/// Applies the "Open RepoMen automatically when you log in" preference
+/// (`Preferences.launchAtLogin`) via `SMAppService`.
 ///
-/// `SMAppService` is the single source of truth — nothing is mirrored into
-/// UserDefaults, so the toggle can never disagree with System Settings › General ›
-/// Login Items, however the user flips it there.
+/// Failures are logged, not thrown: the toggle is driven by the persisted
+/// preference (the user's intent), and a failed registration surfaces in the log
+/// rather than freezing the UI.
 enum LaunchAtLogin {
 
-    static var isEnabled: Bool {
-        SMAppService.mainApp.status == .enabled
-    }
-
-    /// Registers/unregisters the app as a login item. Failures are logged, not
-    /// thrown: the toggle re-reads `isEnabled` on the next pass and simply snaps
-    /// back to the true state.
     static func set(_ enabled: Bool) {
         do {
             if enabled {
