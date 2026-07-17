@@ -30,18 +30,14 @@ fable.md and the PR descriptions.
 Cross-PR notes: #2 and #4 both touch `Reclaimer.reclaim`'s preamble — if they conflict
 on merge, keep both changes. #2 composes with #1's model-side scan/reclaim exclusion.
 
-### k3 PRs (open — clear the items below only once merged)
+### k3 PRs
 
 | PR | Branch | Findings closed |
 |---|---|---|
 | [#12](https://github.com/L-K-M/RepoMen/pull/12) | `k3/watch-folders` | k3-K5 watched folders + auto-trash + menu bar + notifications, k3-K6 scan-at-launch |
 | [#13](https://github.com/L-K-M/RepoMen/pull/13) | `k3/derived-state-perf` | P4+P5+P7 derived-state caching + search debounce, P10 (width half) |
 | [#14](https://github.com/L-K-M/RepoMen/pull/14) | `k3/ux-remainder` | k3-K1 selection survives rescans, k3-K2 unmeasured-summary honesty (fable B8 residual), k3-K3 icon-only row warning, U10 Items menu |
-
-Merge expectations: #13 and #14 both edit `AppModel.swift` in disjoint regions
-(derived-state caching vs. selection/reclaim/menu additions); #12 owns
-`Preferences`/`AppDelegate`/`SettingsView` and adds scenes to `RepoMenApp.swift`
-while #14 adds a commands menu there — textual merges at worst.
+| [#15](https://github.com/L-K-M/RepoMen/pull/15) | `k3/launch-hang-hotfix` | launch unresponsiveness after #12–#14 (WindowGroup+MenuBarExtra activation; notification-center XPC at launch; menu-bar extra now opt-in) |
 
 > **⚠ CI is not running in this repository.** Every Actions job — including the
 > original `main` commit `a7190a7`, before any review changes — "fails" within ~2
