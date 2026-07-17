@@ -474,4 +474,26 @@ final class AppModel: ObservableObject {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
     }
+
+    /// Adds every selected project artifact's *project folder* to watch mode — the
+    /// artifact itself can't be a watch root (a scan never descends into artifacts,
+    /// so watching it would find nothing), but its project can, which keeps the
+    /// whole project clean from now on. Known-cache rows are skipped: watching
+    /// fixed cache locations isn't supported.
+    func addToWatchedFolders(ids: Set<String>) {
+        for item in items where ids.contains(item.id) && !item.isKnownCache {
+            let project = URL(fileURLWithPath: item.path).deletingLastPathComponent().path
+            preferences.watchFolder(path: project)
+        }
+    }
+
+    /// True when any selected project artifact's project folder isn't watched yet —
+    /// the enabled state of "Add to Watched Folders".
+    func canWatchSelection(ids: Set<String>) -> Bool {
+        let watched = Set(preferences.watchedFolders.map(\.path))
+        return items.contains { item in
+            ids.contains(item.id) && !item.isKnownCache
+                && !watched.contains(URL(fileURLWithPath: item.path).deletingLastPathComponent().path)
+        }
+    }
 }

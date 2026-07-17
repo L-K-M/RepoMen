@@ -91,6 +91,14 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(lastWatchDryRunSignature, forKey: Key.lastWatchDryRunSignature) }
     }
 
+    /// Adds a folder to the watched set (deduped, inheriting the current idle
+    /// threshold) and surfaces the menu-bar presence, so watch mode actually runs.
+    func watchFolder(path: String) {
+        guard !watchedFolders.contains(where: { $0.path == path }) else { return }
+        watchedFolders.append(WatchedFolder(path: path, maxIdleDays: idleDays))
+        showInMenuBar = true
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.scanRoots = defaults.stringArray(forKey: Key.scanRoots)

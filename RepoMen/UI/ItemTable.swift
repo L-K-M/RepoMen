@@ -47,6 +47,9 @@ struct ItemTable: View {
             Button("Uncheck") { model.setChecked(false, ids: ids) }
                 .disabled(model.isReclaiming)
             Divider()
+            Button("Add to Watched Folders") { model.addToWatchedFolders(ids: ids) }
+                .disabled(!model.canWatchSelection(ids: ids))
+            Divider()
             // Disabled mid-reclaim: excluding a row cannot save it from a batch that
             // is already deleting, and pretending otherwise would lose data.
             Button("Exclude from Future Scans") { model.exclude(ids: ids) }

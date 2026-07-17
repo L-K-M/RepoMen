@@ -90,12 +90,7 @@ struct WatchSettingsView: View {
     }
 
     private func watch(_ path: String) {
-        guard !preferences.watchedFolders.contains(where: { $0.path == path }) else { return }
-        preferences.watchedFolders.append(
-            WatchedFolder(path: path, maxIdleDays: preferences.idleDays))
-        // Watching only works while RepoMen stays alive — surface the menu-bar
-        // presence (and its park-instead-of-quit behavior) the moment it matters.
-        preferences.showInMenuBar = true
+        preferences.watchFolder(path: path)
     }
 
     private func addFolder() {
