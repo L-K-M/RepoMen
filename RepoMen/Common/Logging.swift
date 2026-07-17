@@ -8,4 +8,5 @@ enum Log {
     static let app = Logger(subsystem: subsystem, category: "app")
     static let scan = Logger(subsystem: subsystem, category: "scan")
     static let reclaim = Logger(subsystem: subsystem, category: "reclaim")
+    static let watch = Logger(subsystem: subsystem, category: "watch")
 }

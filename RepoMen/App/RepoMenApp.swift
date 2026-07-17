@@ -6,13 +6,21 @@ import SwiftUI
 struct RepoMenApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
+    @StateObject private var preferences = Preferences.shared
+    @StateObject private var watchManager = WatchManager.shared
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             ContentView()
                 .environmentObject(model)
-                .environmentObject(Preferences.shared)
+                .environmentObject(preferences)
                 .frame(minWidth: 780, minHeight: 460)
+                .onAppear {
+                    // Opt-in automation: one scan when the window first appears.
+                    if preferences.scanAtLaunch, model.phase == .idle {
+                        model.startScan()
+                    }
+                }
         }
         .commands {
             CommandGroup(after: .appInfo) {
@@ -36,9 +44,20 @@ struct RepoMenApp: App {
             }
         }
 
+        // Watch mode's presence: status + quick actions. Insertion is user-controlled
+        // (Settings → General); the scene exists regardless so toggling is instant.
+        MenuBarExtra("RepoMen", systemImage: "internaldrive",
+                     isInserted: $preferences.showInMenuBar) {
+            WatchMenuContent()
+                .environmentObject(model)
+                .environmentObject(preferences)
+                .environmentObject(watchManager)
+        }
+
         Settings {
             SettingsView(updateChecker: appDelegate.updateChecker)
-                .environmentObject(Preferences.shared)
+                .environmentObject(preferences)
+                .environmentObject(watchManager)
         }
     }
 }

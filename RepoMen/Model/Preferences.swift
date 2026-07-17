@@ -15,6 +15,12 @@ final class Preferences: ObservableObject {
         static let disabledKinds = "disabledKinds"
         static let lifetimeReclaimedBytes = "lifetimeReclaimedBytes"
         static let lifetimeReclaimedCount = "lifetimeReclaimedCount"
+        static let watchedFolders = "watchedFolders"
+        static let watchAutoTrash = "watchAutoTrash"
+        static let showInMenuBar = "showInMenuBar"
+        static let scanAtLaunch = "scanAtLaunch"
+        static let lastWatchRun = "lastWatchRun"
+        static let lastWatchDryRunSignature = "lastWatchDryRunSignature"
     }
 
     /// Folders whose trees are deep-scanned for project artifacts (absolute paths).
@@ -50,6 +56,39 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(lifetimeReclaimedCount, forKey: Key.lifetimeReclaimedCount) }
     }
 
+    /// Directories RepoMen keeps clean on its own (Settings → Watch), JSON-encoded.
+    @Published var watchedFolders: [WatchedFolder] {
+        didSet { defaults.set(try? JSONEncoder().encode(watchedFolders), forKey: Key.watchedFolders) }
+    }
+
+    /// The watch-mode master switch: while off, watch checks only *report* what
+    /// could be repossessed; nothing is trashed. Automation is opt-in, exactly
+    /// like selection is in the window.
+    @Published var watchAutoTrash: Bool {
+        didSet { defaults.set(watchAutoTrash, forKey: Key.watchAutoTrash) }
+    }
+
+    /// Whether the menu-bar extra (watch status + quick actions) is shown.
+    @Published var showInMenuBar: Bool {
+        didSet { defaults.set(showInMenuBar, forKey: Key.showInMenuBar) }
+    }
+
+    /// Run one scan automatically when the app opens.
+    @Published var scanAtLaunch: Bool {
+        didSet { defaults.set(scanAtLaunch, forKey: Key.scanAtLaunch) }
+    }
+
+    /// The most recent watch check's outcome, for the menu bar and Settings.
+    @Published var lastWatchRun: WatchRunRecord? {
+        didSet { defaults.set(try? JSONEncoder().encode(lastWatchRun), forKey: Key.lastWatchRun) }
+    }
+
+    /// Fingerprint of the last dry-run candidate set a notification went out for,
+    /// so an unchanged finding isn't re-notified every cycle.
+    @Published var lastWatchDryRunSignature: String {
+        didSet { defaults.set(lastWatchDryRunSignature, forKey: Key.lastWatchDryRunSignature) }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.scanRoots = defaults.stringArray(forKey: Key.scanRoots)
@@ -60,6 +99,15 @@ final class Preferences: ObservableObject {
         self.disabledKinds = Set(defaults.stringArray(forKey: Key.disabledKinds) ?? [])
         self.lifetimeReclaimedBytes = Int64(defaults.integer(forKey: Key.lifetimeReclaimedBytes))
         self.lifetimeReclaimedCount = defaults.integer(forKey: Key.lifetimeReclaimedCount)
+        self.watchedFolders = (defaults.data(forKey: Key.watchedFolders)
+            .flatMap { try? JSONDecoder().decode([WatchedFolder].self, from: $0) }) ?? []
+        // Off until the user arms it: watch mode reports before it ever trashes.
+        self.watchAutoTrash = defaults.object(forKey: Key.watchAutoTrash) as? Bool ?? false
+        self.showInMenuBar = defaults.object(forKey: Key.showInMenuBar) as? Bool ?? true
+        self.scanAtLaunch = defaults.object(forKey: Key.scanAtLaunch) as? Bool ?? false
+        self.lastWatchRun = defaults.data(forKey: Key.lastWatchRun)
+            .flatMap { try? JSONDecoder().decode(WatchRunRecord.self, from: $0) }
+        self.lastWatchDryRunSignature = defaults.string(forKey: Key.lastWatchDryRunSignature) ?? ""
     }
 
     var enabledKinds: Set<ArtifactKind> {
