@@ -46,15 +46,23 @@ final class AppModel: ObservableObject {
         case ready
     }
 
-    @Published private(set) var phase: Phase = .idle
-    @Published private(set) var items: [CleanableItem] = []
+    @Published private(set) var phase: Phase = .idle {
+        didSet { invalidateDerived() }   // measuring uses a stable row order
+    }
+    @Published private(set) var items: [CleanableItem] = [] {
+        didSet { rebuildItemDerivedState() }
+    }
     @Published private(set) var scanStatus = ""
     @Published private(set) var isReclaiming = false
     @Published var checkedIDs: Set<String> = []
-    @Published var sidebarSelection: SidebarEntry? = .all
+    @Published var sidebarSelection: SidebarEntry? = .all {
+        didSet { invalidateDerived() }
+    }
     @Published var sortOrder: [KeyPathComparator<CleanableItem>] = [
         KeyPathComparator(\.sizeBytes, order: .reverse),
-    ]
+    ] {
+        didSet { invalidateDerived() }
+    }
     @Published var searchText = ""
     @Published var summary: ReclaimSummary?
 
@@ -68,8 +76,30 @@ final class AppModel: ObservableObject {
     private var pendingMeasurements: [String: DirectorySizer.Measurement] = [:]
     private var flushScheduled = false
 
+    // MARK: Derived-state caches
+
+    /// `visibleItems` is read several times per render pass (table, footer, dialogs)
+    /// and was a full filter + O(n log n) sort *per read*. It is instead recomputed
+    /// lazily, once, after any of its inputs change. Search goes through a 150 ms
+    /// debounce so every keystroke doesn't sort ten thousand rows.
+    private var cachedVisibleItems: [CleanableItem] = []
+    private var derivedDirty = true
+    /// The published debounced copy of `searchText` — also the signal that refreshes
+    /// the table 150 ms after the user stops typing.
+    @Published private var debouncedSearchText = "" {
+        didSet { invalidateDerived() }
+    }
+    /// id → item and per-entry totals, rebuilt in one pass whenever `items` changes:
+    /// `checkedItems` and the sidebar badges stop being O(n) scans per access.
+    private var itemsByID: [String: CleanableItem] = [:]
+    private var cachedStats: [SidebarEntry: (count: Int, bytes: Int64)] = [:]
+
     init(preferences: Preferences = .shared) {
         self.preferences = preferences
+        $searchText
+            .removeDuplicates()
+            .debounce(for: .milliseconds(150), scheduler: DispatchQueue.main)
+            .assign(to: &$debouncedSearchText)
     }
 
     // MARK: Derived state
@@ -83,29 +113,54 @@ final class AppModel: ObservableObject {
     ]
 
     var visibleItems: [CleanableItem] {
+        if derivedDirty { recomputeVisibleItems() }
+        return cachedVisibleItems
+    }
+
+    private func invalidateDerived() {
+        derivedDirty = true
+    }
+
+    private func recomputeVisibleItems() {
         var filtered = items
         if case .category(let category)? = sidebarSelection {
             filtered = filtered.filter { $0.category == category }
         }
-        if !searchText.isEmpty {
+        if !debouncedSearchText.isEmpty {
             filtered = filtered.filter {
-                $0.label.localizedCaseInsensitiveContains(searchText)
-                    || $0.path.localizedCaseInsensitiveContains(searchText)
+                $0.label.localizedCaseInsensitiveContains(debouncedSearchText)
+                    || $0.path.localizedCaseInsensitiveContains(debouncedSearchText)
             }
         }
-        return filtered.sorted(using: phase == .measuring ? Self.measuringOrder : sortOrder)
+        cachedVisibleItems = filtered.sorted(using: phase == .measuring ? Self.measuringOrder : sortOrder)
+        derivedDirty = false
+    }
+
+    /// One O(n) pass per `items` mutation, replacing O(n)-per-access lookups.
+    private func rebuildItemDerivedState() {
+        itemsByID = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var stats: [SidebarEntry: (count: Int, bytes: Int64)] = [:]
+        var totalBytes: Int64 = 0
+        for item in items {
+            let entry = SidebarEntry.category(item.category)
+            let current = stats[entry] ?? (0, 0)
+            stats[entry] = (current.count + 1, current.bytes + item.sizeBytes)
+            totalBytes += item.sizeBytes
+        }
+        stats[.all] = (items.count, totalBytes)
+        cachedStats = stats
+        invalidateDerived()
     }
 
     func stats(for entry: SidebarEntry) -> (count: Int, bytes: Int64) {
-        let matching: [CleanableItem]
-        switch entry {
-        case .all: matching = items
-        case .category(let category): matching = items.filter { $0.category == category }
-        }
-        return (matching.count, matching.reduce(0) { $0 + $1.sizeBytes })
+        cachedStats[entry] ?? (0, 0)
     }
 
-    var checkedItems: [CleanableItem] { items.filter { checkedIDs.contains($0.id) } }
+    /// Path-sorted for determinism (a Set's iteration order must never decide the
+    /// order of a deletion batch or a dialog's item list).
+    var checkedItems: [CleanableItem] {
+        checkedIDs.compactMap { itemsByID[$0] }.sorted { $0.path < $1.path }
+    }
     var checkedBytes: Int64 { checkedItems.reduce(0) { $0 + $1.sizeBytes } }
 
     /// The largest measured item once a scan settles — every repo job has a prime
@@ -190,13 +245,15 @@ final class AppModel: ObservableObject {
         scanStatus = ""
     }
 
-    /// Sizes all items with bounded concurrency — sizing hammers the disk, and four
-    /// walkers saturate an SSD without starving the UI. Cancelled (partial)
-    /// measurements are discarded, never reported.
+    /// Sizes all items with bounded concurrency — sizing hammers the disk, and a few
+    /// walkers saturate an SSD without starving the UI. The width scales with the
+    /// machine (half the cores, clamped 2…8) instead of a hardcoded four. Cancelled
+    /// (partial) measurements are discarded, never reported.
     private nonisolated static func measureAll(
         _ items: [CleanableItem],
         apply: @escaping @Sendable (String, DirectorySizer.Measurement) -> Void
     ) async {
+        let width = min(8, max(2, ProcessInfo.processInfo.activeProcessorCount / 2))
         await withTaskGroup(of: Void.self) { group in
             var iterator = items.makeIterator()
             func addNext() {
@@ -209,7 +266,7 @@ final class AppModel: ObservableObject {
                     apply(item.id, measurement)
                 }
             }
-            for _ in 0..<4 { addNext() }
+            for _ in 0..<width { addNext() }
             for await _ in group {
                 if Task.isCancelled { break }
                 addNext()
