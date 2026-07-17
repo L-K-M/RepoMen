@@ -39,6 +39,8 @@ on merge, keep both changes. #2 composes with #1's model-side scan/reclaim exclu
 | [#14](https://github.com/L-K-M/RepoMen/pull/14) | `k3/ux-remainder` | k3-K1 selection survives rescans, k3-K2 unmeasured-summary honesty (fable B8 residual), k3-K3 icon-only row warning, U10 Items menu |
 | [#15](https://github.com/L-K-M/RepoMen/pull/15) | `k3/launch-hang-hotfix` | launch unresponsiveness after #12–#14 (WindowGroup+MenuBarExtra activation; notification-center XPC at launch; menu-bar extra now opt-in) |
 | [#16](https://github.com/L-K-M/RepoMen/pull/16) | `k3/menubar-loop-fix` | launch beachball: MenuBarExtra `isInserted` KVO writeback ↔ `@Published` republish feedback loop; deduping setter |
+| [#17](https://github.com/L-K-M/RepoMen/pull/17) | `k3/context-menu-watch` | "Add to Watched Folders" from scan-results context/Items menus (adds the project folder; shared `Preferences.watchFolder`) |
+| [#18](https://github.com/L-K-M/RepoMen/pull/18) | `k3/launch-at-login` | "Open at Login" toggle via SMAppService (no UserDefaults mirror); watch lifecycle copy clarified |
 
 > **⚠ CI is not running in this repository.** Every Actions job — including the
 > original `main` commit `a7190a7`, before any review changes — "fails" within ~2
