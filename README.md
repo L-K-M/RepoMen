@@ -63,6 +63,12 @@ protected folder (e.g. `~/Documents`).
 Right-click any row to reveal it in Finder or exclude it from future scans. Settings
 (⌘,) manages scan folders, per-kind rule toggles, and Trash vs. permanent delete.
 
+**Watch mode** (Settings → Watch) keeps chosen folders clean on its own: give a
+folder an idle threshold, arm the master switch, and — while RepoMen lives in your
+menu bar — anything stale is moved to the Trash automatically after each periodic
+check, with a notification of what was repossessed. Auto-clean is always Trash-only
+and re-verified exactly like a manual reclaim; until you arm it, checks only report.
+
 Sizes are allocated-space estimates: hardlinked files are counted once, but APFS
 *clones* (how pnpm and uv share files across projects) can't be attributed per copy —
 the same limitation `du` and Finder have — so the space actually freed can be less

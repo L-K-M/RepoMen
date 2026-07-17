@@ -105,9 +105,28 @@ Sizes are computed after discovery (concurrent, cancellable, streamed into the U
 the list appears immediately and fills in. "Last used" is the newest modification time
 seen while sizing — i.e. when that artifact was last built.
 
+## Watch mode (opt-in automation)
+
+Settings → Watch lists **watched folders**, each with its own idle threshold. While
+RepoMen runs (it becomes menu-bar resident once any watch folder is enabled), a check
+runs shortly after launch and every 6 hours: the watched roots are deep-scanned with
+the same `Scanner`, measured, and anything idle past its folder's threshold is moved
+to the Trash. The trust model is unchanged, just automated:
+
+- **Automation is opt-in.** The master switch starts off; until then a check only
+  *reports* (a notification, deduped so identical findings don't repeat).
+- **Auto-clean is always Trash**, never permanent delete, regardless of the manual
+  reclaim setting. Every item still passes `Reclaimer`'s anchor re-verification and
+  `PathGuards` at trash time.
+- **A check is never a surprise.** Notifications summarize every run that changed
+  something ("14 squatters evicted — 2.3 GB repossessed"), and the menu-bar extra
+  shows the last run at a glance.
+
 ## Non-goals
 
-- Scheduled/background cleaning. RepoMen is a deliberate tool you run.
+- Fully unattended cleaning (launchd/login-item helper that runs while the app is
+  quit). Watch mode covers "while the app is alive"; headless background cleaning is
+  a deliberate future step, not an accident to stumble into.
 - System caches, logs, browser *profiles* (only `Cache`/`Code Cache` subdirs).
 - Docker/OrbStack/VM images, simulator *runtimes* (only their caches), Xcode archives
   (they hold dSYMs for shipped builds).

@@ -13,7 +13,10 @@ to the Trash. See [PLAN.md](PLAN.md) for the design and, critically, the trust m
 - `RepoMen/Scan` — `RuleCatalog` (pure, data-driven anchor rules), `Scanner` (the
   walk), `KnownCaches` (fixed cache locations incl. browsers), `DirectorySizer`.
 - `RepoMen/Reclaim` — `PathGuards` (pure validation), `Reclaimer` (re-verify + trash).
-- `RepoMen/UI` — SwiftUI views: sidebar, table, settings, empty state.
+- `RepoMen/Watch` — watched-folders automation: `WatchedFolder` (+`WatchRunRecord`),
+  `WatchEngine` (pure eligibility), `WatchManager` (periodic check → trash),
+  `WatchNotifier` (notifications).
+- `RepoMen/UI` — SwiftUI views: sidebar, table, settings, empty state, menu bar.
 - `RepoMen/Updates` — reusable GitHub release checker (shared verbatim with the
   sibling apps).
 - `RepoMenTests` — pure-logic + temp-dir integration tests (no UI tests).

@@ -1,8 +1,10 @@
 import AppKit
+import UserNotifications
 
 /// Minimal delegate: owns the update checker (the `Updates/` module shared with the
-/// sibling apps) and gives the one-window utility its quit-on-close behavior — with
-/// one exception: the app never dies in the middle of a deletion batch.
+/// sibling apps) and gives the utility its window behavior — quit-on-close normally,
+/// menu-bar resident once watch folders exist — with one exception: the app never
+/// dies in the middle of a deletion batch, manual or automatic.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
@@ -12,10 +14,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !Self.isRunningTests else { return }
         updateChecker.start()
+        // Watch notifications must show even while the window is frontmost.
+        UNUserNotificationCenter.current().delegate = self
+        WatchManager.shared.start()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        // With watched folders armed, RepoMen is a menu-bar resident: closing the
+        // window parks it rather than quitting, or watching stops with the app.
+        !WatchManager.shared.hasWatchedFolders
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -26,11 +33,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppModel.terminateAfterReclaim = true
             return .terminateLater
         }
+        if WatchManager.activeReclaimCount > 0 {
+            WatchManager.terminateAfterReclaim = true
+            return .terminateLater
+        }
         return .terminateNow
     }
 
     private static var isRunningTests: Bool {
         NSClassFromString("XCTestCase") != nil ||
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            willPresent notification: UNNotification,
+                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
     }
 }

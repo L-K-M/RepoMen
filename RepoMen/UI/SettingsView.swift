@@ -12,6 +12,8 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             FoldersSettingsView()
                 .tabItem { Label("Folders", systemImage: "folder") }
+            WatchSettingsView()
+                .tabItem { Label("Watch", systemImage: "eye") }
             RulesSettingsView()
                 .tabItem { Label("Rules", systemImage: "checklist") }
             UpdatesSettingsView(updateChecker: updateChecker)
@@ -37,6 +39,14 @@ private struct GeneralSettingsView: View {
                 Text("Consider artifacts idle after \(preferences.idleDays) days")
             }
             Text("Used by the “Select idle” quick action in the main window.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Divider()
+
+            Toggle("Scan automatically when RepoMen opens", isOn: $preferences.scanAtLaunch)
+            Toggle("Show RepoMen in the menu bar", isOn: $preferences.showInMenuBar)
+            Text("The menu bar extra shows watch status and quick actions.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
