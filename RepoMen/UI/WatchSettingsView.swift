@@ -77,8 +77,8 @@ struct WatchSettingsView: View {
     private var lastRunText: String {
         guard let run = preferences.lastWatchRun else {
             return watchManager.hasWatchedFolders
-                ? "Checks run shortly after launch and every 6 hours while RepoMen is open."
-                : "Add a folder and RepoMen will check it shortly after launch, then every 6 hours."
+                ? "Checks run shortly after launch and every 6 hours while RepoMen is running. The window can stay closed — quitting the app stops checks."
+                : "Add a folder and RepoMen will check it shortly after launch, then every 6 hours while it's running."
         }
         let age = Format.age(run.date)
         if run.dryRun {
