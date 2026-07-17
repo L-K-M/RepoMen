@@ -64,8 +64,21 @@ struct RepoMenApp: App {
 
         // Watch mode's presence: status + quick actions. Insertion is user-controlled
         // (Settings → General); the scene exists regardless so toggling is instant.
+        //
+        // `isInserted` is two-way: MenuBarExtraController writes the status item's
+        // visibility back through it via KVO. `@Published` re-emits on *every* set,
+        // even an equal one — publish → scene invalidation → configuration update →
+        // KVO writeback → publish → … an endless update loop that beachballs the app
+        // at launch (and persists `true`, so a default of `false` never gets read).
+        // The deduping setter below swallows no-op writes and breaks the cycle.
         MenuBarExtra("RepoMen", systemImage: "internaldrive",
-                     isInserted: $preferences.showInMenuBar) {
+                     isInserted: Binding(
+                        get: { preferences.showInMenuBar },
+                        set: { newValue in
+                            if preferences.showInMenuBar != newValue {
+                                preferences.showInMenuBar = newValue
+                            }
+                        })) {
             WatchMenuContent()
                 .environmentObject(model)
                 .environmentObject(preferences)
