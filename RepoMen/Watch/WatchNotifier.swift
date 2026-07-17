@@ -4,10 +4,17 @@ import UserNotifications
 
 /// Watch-mode summaries, delivered as user notifications. Best-effort by design:
 /// a denied notification permission must never break cleaning, it only logs.
+///
+/// Everything in here is lazy: `UNUserNotificationCenter.current()` talks to the
+/// notification daemon over XPC and is *not* called at launch — only when a watch
+/// run first has something to report.
 enum WatchNotifier {
 
     /// Ask once, lazily, the first time a watch run has something to report.
     private static var didRequestAuthorization = false
+
+    /// Shows banners even while the app's window is frontmost.
+    private static let delegate = NotificationDelegate()
 
     private static func authorizeIfNeeded(then deliver: @escaping () -> Void) {
         if didRequestAuthorization {
@@ -15,7 +22,9 @@ enum WatchNotifier {
             return
         }
         didRequestAuthorization = true
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
+        let center = UNUserNotificationCenter.current()
+        center.delegate = delegate
+        center.requestAuthorization(options: [.alert, .sound]) { granted, error in
             if let error {
                 Log.watch.warning("notification authorization failed: \(error.localizedDescription, privacy: .public)")
             } else if !granted {
@@ -57,5 +66,15 @@ enum WatchNotifier {
                 }
             }
         }
+    }
+}
+
+/// The notification-center delegate for watch summaries. `nonisolated` because the
+/// center calls it on its own queue.
+private final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
     }
 }

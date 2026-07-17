@@ -68,7 +68,9 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(watchAutoTrash, forKey: Key.watchAutoTrash) }
     }
 
-    /// Whether the menu-bar extra (watch status + quick actions) is shown.
+    /// Whether the menu-bar extra (watch status + quick actions) is shown. Off until
+    /// watch mode is actually armed (adding the first watched folder turns it on) —
+    /// an always-on menu-bar presence for users who never watch would be clutter.
     @Published var showInMenuBar: Bool {
         didSet { defaults.set(showInMenuBar, forKey: Key.showInMenuBar) }
     }
@@ -103,7 +105,7 @@ final class Preferences: ObservableObject {
             .flatMap { try? JSONDecoder().decode([WatchedFolder].self, from: $0) }) ?? []
         // Off until the user arms it: watch mode reports before it ever trashes.
         self.watchAutoTrash = defaults.object(forKey: Key.watchAutoTrash) as? Bool ?? false
-        self.showInMenuBar = defaults.object(forKey: Key.showInMenuBar) as? Bool ?? true
+        self.showInMenuBar = defaults.object(forKey: Key.showInMenuBar) as? Bool ?? false
         self.scanAtLaunch = defaults.object(forKey: Key.scanAtLaunch) as? Bool ?? false
         self.lastWatchRun = defaults.data(forKey: Key.lastWatchRun)
             .flatMap { try? JSONDecoder().decode(WatchRunRecord.self, from: $0) }

@@ -33,8 +33,10 @@ final class WatchManager: ObservableObject {
     init(preferences: Preferences = .shared) {
         self.preferences = preferences
         // Watch mode can be armed mid-session (first folder added in Settings):
-        // start lazily the moment any enabled folder exists.
+        // start lazily the moment any enabled folder exists. `dropFirst` skips the
+        // subscription's synchronous replay — init-time state needs no reaction.
         preferences.$watchedFolders
+            .dropFirst()
             .sink { [weak self] _ in self?.start() }
             .store(in: &cancellables)
     }

@@ -1,5 +1,4 @@
 import AppKit
-import UserNotifications
 
 /// Minimal delegate: owns the update checker (the `Updates/` module shared with the
 /// sibling apps) and gives the utility its window behavior — quit-on-close normally,
@@ -13,9 +12,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !Self.isRunningTests else { return }
+        // A WindowGroup + MenuBarExtra app can be mis-classified at launch (treated
+        // like an agent): the window then opens unactivated and the app looks
+        // unresponsive. RepoMen is a windowed app first — say so explicitly.
+        NSApp.setActivationPolicy(.regular)
+        if #available(macOS 14.0, *) {
+            NSApp.activate()
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
         updateChecker.start()
-        // Watch notifications must show even while the window is frontmost.
-        UNUserNotificationCenter.current().delegate = self
         WatchManager.shared.start()
     }
 
@@ -43,13 +49,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static var isRunningTests: Bool {
         NSClassFromString("XCTestCase") != nil ||
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-    }
-}
-
-extension AppDelegate: UNUserNotificationCenterDelegate {
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                            willPresent notification: UNNotification,
-                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        completionHandler([.banner, .sound])
     }
 }
