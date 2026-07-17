@@ -56,6 +56,9 @@ struct RepoMenApp: App {
                 Button("Uncheck") { model.setChecked(false, ids: model.tableSelection) }
                     .disabled(model.tableSelection.isEmpty || model.isReclaiming)
                 Divider()
+                Button("Add to Watched Folders") { model.addToWatchedFolders(ids: model.tableSelection) }
+                    .disabled(!model.canWatchSelection(ids: model.tableSelection))
+                Divider()
                 Button("Exclude from Future Scans") { model.exclude(ids: model.tableSelection) }
                     .keyboardShortcut("e", modifiers: .command)
                     .disabled(model.tableSelection.isEmpty || model.isReclaiming)

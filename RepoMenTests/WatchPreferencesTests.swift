@@ -34,6 +34,20 @@ final class WatchPreferencesTests: XCTestCase {
         XCTAssertTrue(reloaded.watchAutoTrash)
     }
 
+    func testWatchFolderDedupesAndArmsMenuBar() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.idleDays = 21
+
+        preferences.watchFolder(path: "/Users/x/dev")
+        preferences.watchFolder(path: "/Users/x/dev")
+
+        XCTAssertEqual(preferences.watchedFolders.count, 1, "watching is deduped by path")
+        XCTAssertEqual(preferences.watchedFolders.first?.maxIdleDays, 21,
+                       "a new watched folder inherits the current idle threshold")
+        XCTAssertTrue(preferences.showInMenuBar,
+                      "watching arms the menu-bar presence so checks actually run")
+    }
+
     func testLastWatchRunRoundTrips() {
         let preferences = Preferences(defaults: defaults)
         XCTAssertNil(preferences.lastWatchRun)
