@@ -1,8 +1,10 @@
 # ANALYSIS.md — RepoMen backlog & design notes
 
-The living document for future work. It consolidates the full 0.1.0 review
-([fable.md](fable.md), commit `a7190a7`) minus everything already implemented; the
-review's finding IDs (B/S/P/U/V/K/D/I) are kept so PRs and history stay traceable.
+The living document for future work. It consolidates the 0.1.0 review
+([fable.md](fable.md), commit `a7190a7`) and the second-pass review
+([k3.md](k3.md), against post-#9 main) minus everything already implemented; the
+reviews' finding IDs (B/S/P/U/V/K/D/I from fable, K1–K7 from k3) are kept so PRs
+and history stay traceable.
 
 **Severity:** 🔴 high · 🟠 medium · 🟡 low. Effort: S/M/L.
 
@@ -28,44 +30,45 @@ fable.md and the PR descriptions.
 Cross-PR notes: #2 and #4 both touch `Reclaimer.reclaim`'s preamble — if they conflict
 on merge, keep both changes. #2 composes with #1's model-side scan/reclaim exclusion.
 
+### k3 PRs (open — clear the items below only once merged)
+
+| PR | Branch | Findings closed |
+|---|---|---|
+| [#12](https://github.com/L-K-M/RepoMen/pull/12) | `k3/watch-folders` | k3-K5 watched folders + auto-trash + menu bar + notifications, k3-K6 scan-at-launch |
+| [#13](https://github.com/L-K-M/RepoMen/pull/13) | `k3/derived-state-perf` | P4+P5+P7 derived-state caching + search debounce, P10 (width half) |
+| [#14](https://github.com/L-K-M/RepoMen/pull/14) | `k3/ux-remainder` | k3-K1 selection survives rescans, k3-K2 unmeasured-summary honesty (fable B8 residual), k3-K3 icon-only row warning, U10 Items menu |
+
+Merge expectations: #13 and #14 both edit `AppModel.swift` in disjoint regions
+(derived-state caching vs. selection/reclaim/menu additions); #12 owns
+`Preferences`/`AppDelegate`/`SettingsView` and adds scenes to `RepoMenApp.swift`
+while #14 adds a commands menu there — textual merges at worst.
+
 > **⚠ CI is not running in this repository.** Every Actions job — including the
 > original `main` commit `a7190a7`, before any review changes — "fails" within ~2
 > seconds with no runner assigned and no logs. That is the signature of macOS runners
 > being unavailable to the account (this repo is private; macOS runners bill at 10×
 > minutes, and an exhausted free tier or a zero spending limit fails jobs instantly).
 > Until Actions billing/spending is sorted out in the GitHub account settings, none of
-> the review PRs have been machine-verified: they were written without a local Xcode
-> toolchain and reviewed by hand only. Run the suite locally
-> (`xcodebuild … clean test`) or fix Actions before merging.
+> the review PRs (claude's #1–#9 or k3's #12–#14) have been machine-verified: they
+> were written without a local Xcode toolchain and reviewed by hand only. Run the
+> suite locally (`xcodebuild … clean test`) or fix Actions before merging.
 
 ---
 
 ## Open: performance
 
-### P4+P5+P7 — Derived-state memoization refactor 🟠 M
-`visibleItems` (filter + O(n log n) sort) is an uncached computed property evaluated
-multiple times per render pass; `stats(for:)` filters+reduces all items per sidebar row;
-every checkbox toggle republishes `checkedIDs` and re-runs it all (the confirmation
-title alone makes 3–4 O(n) passes). PR #1's batching removed the worst driver (one
-invalidation per 150 ms instead of per item), so what remains is felt mainly on
-10k+-item result sets: laggy filter keystrokes and spongy checkbox clicks.
-**Shape:** cache `visibleItems` keyed on (items, sidebarSelection, searchText,
-sortOrder); precompute a `[ArtifactCategory: (count, bytes)]` dictionary per items
-mutation; maintain `checkedCount`/`checkedBytes` incrementally in `setChecked`;
-pre-lowercase label/path for search and debounce `searchText` ~150 ms.
-
 ### P9 — Parallel discovery walk 🟠 M (profile first)
-Sizing is 4-way parallel; discovery is a single-threaded recursive walk, so the phase
+Sizing is parallel; discovery is a single-threaded recursive walk, so the phase
 meant to feel instant is the serial one. Verifier caution: the walk prunes matched
 artifacts, hidden dirs and `.git`, so directory counts are far smaller than raw file
 counts — profile before building. **Shape:** bounded task group over top-level (or
-depth-2) subdirectories, per-worker item arrays merged at the end; alternatively stream
-discovered items into the table during the walk.
+depth-2) subdirectories, per-worker item arrays merged at the end; alternatively
+stream discovered items into the table during the walk.
 
-### P10 — Adaptive sizing width 🟡 S
-`measureAll` hardcodes 4 walkers. Derive from `activeProcessorCount` clamped to 2…8;
-revisit together with P9. Tail latency is bounded by the single largest artifact —
-splitting the biggest directories across subtasks would shorten it.
+### P10 (residual) — Sizing tail latency 🟡 S
+PR #13 made the walker count adaptive (half the cores, clamped 2…8). What remains:
+tail latency is bounded by the single largest artifact — splitting the biggest
+directories across subtasks would shorten it. Revisit together with P9.
 
 ---
 
@@ -75,12 +78,6 @@ splitting the biggest directories across subtasks would shorten it.
 PR #2 surfaces recorded warnings in the confirmation dialog, but badges still reflect
 the scan-time snapshot. Re-snapshot `NSWorkspace` when the window becomes key (and
 ideally when the confirmation opens) and rewrite item warnings in place.
-
-### U10 — Row actions only exist in the context menu 🟡 S
-Reveal in Finder / Copy Path / Exclude have no menu-bar equivalents, no shortcuts, and
-nothing hints right-click exists — "Exclude from Future Scans" is undiscoverable.
-**Shape:** an Items menu bound to the table selection (⌘E exclude, ⇧⌘C copy path,
-⌘↩ reveal); menu commands also make the actions searchable via macOS Help.
 
 ### U13 — Exclude is instant, silent, and far from reversible 🟡 S/M
 A mis-click permanently hides a repo's artifacts; recovery requires knowing about
@@ -100,6 +97,39 @@ deliberately: either restrict roots to the home volume, or extend PathGuards to 
 paths under an explicitly user-chosen scan root (denylist + depth-below-root rules
 still applying, Trash landing in the volume's `.Trashes`). The app's target audience
 keeps repos on external SSDs, so this is worth a real decision rather than a warning.
+
+---
+
+## Open: watch-mode follow-ups (created by PR #12)
+
+### W1 — True background cleaning while the app is quit 🔴 feature, L
+Watch mode covers "while the app is alive" (it parks in the menu bar). Fully
+unattended cleaning needs a login-item helper (SMAppService) or LaunchAgent,
+headless scan+clean, and conservative defaults. PLAN.md keeps this an explicit
+non-goal until designed deliberately.
+
+### W2 — Hide-Dock-icon agent mode 🟡 S/M
+The app keeps its Dock icon while watching. A Settings toggle for
+`.accessory` activation policy (menu-bar-only presence) needs care: the Settings
+scene, alerts, and TCC prompts all behave differently without a Dock presence.
+
+### W3 — Coordinate watch checks with window activity 🟡 S
+`WatchManager` doesn't currently skip a check while a manual scan or reclaim is
+running. Both paths are safe (read-only scan; per-item re-verified Trash), but a
+timer firing mid-manual-reclaim can double-delete-race the same directory (loser
+gets a reported "no longer exists") and thrash the disk. Skip checks while
+`AppModel.isReclaiming`/`isBusy`.
+
+### W4 — Watch checks never cover `KnownCaches` 🟡 decision
+Watch mode only deep-scans watched roots (project artifacts). Auto-cleaning fixed
+cache locations (browser caches with running-app warnings, slow-to-refill package
+caches) is a separate trust decision — candidates would need warning-aware
+eligibility (never auto-trash while the owning app runs).
+
+### W5 — Per-folder watch presets/learning 🟡 idea
+Suggest thresholds from observed build cadence ("this repo builds daily — 7 days
+fits"), or offer "watch all current scan roots" as one tap (PR #12 has per-root
+quick-add already).
 
 ---
 
@@ -159,14 +189,20 @@ through the catalog while keeping bucket logic testable (byte counts localize al
 Best done before more strings accrete. Easter-egg idea: a Schwiizerdütsch flavor-line
 voice for I12.
 
+### Naming
+The "should the app be renamed" question is parked in [k3.md](k3.md) §4 — shortlist
+led by **Sawdust** (what building software leaves behind), with Rubble, Offcuts,
+Jetsam, Ballast, Flotsam, Reclaim as alternates; "RepoMen" itself is defensible. No
+code work until a decision lands.
+
 ---
 
 ## Considered and rejected (kept so they aren't rediscovered)
 
-- **I14 — Menu-bar reclaimable total:** a useful number implies background scanning,
-  colliding with the "deliberate tool you run" non-goal; a stale number is honest but
-  low-value. If ever done: last manual scan's total + timestamp + "Open RepoMen", no
-  scanning or reclaiming from the menu bar.
+- **I14 — Menu-bar reclaimable total:** superseded in part by watch mode (PR #12):
+  the menu bar now shows the last *watch* run and lifetime tally. Still rejected:
+  a live "reclaimable right now" number, which implies constant background
+  scanning beyond watch mode's 6-hour cadence.
 - **DirectorySizer `Date()` per entry:** refuted — short-circuit evaluation runs it
   only on new-maximum mtimes, and `Date` is an allocation-free value type.
 - **"trashItem falls back to permanent delete across volumes":** refuted — it lands in
@@ -182,4 +218,7 @@ Unchanged from AGENTS.md/PLAN.md, restated because several backlog items brush a
 them: anchors are the safety story (never weaken one to fix a false negative); every
 deletion passes `PathGuards.validate` — now on *resolved* paths; Trash stays the
 default; nothing is ever pre-selected; Docker/OrbStack/backups/photo libraries stay
-out; the deep scan stays out of `~/Library` (KnownCaches owns it).
+out; the deep scan stays out of `~/Library` (KnownCaches owns it). Watch mode (PR
+#12) extends the model without changing it: automation is opt-in, auto-clean is
+always Trash (never permanent delete), and every auto-reclaim passes the same
+re-verification at trash time.
