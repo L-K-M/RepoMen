@@ -41,6 +41,7 @@ on merge, keep both changes. #2 composes with #1's model-side scan/reclaim exclu
 | [#16](https://github.com/L-K-M/RepoMen/pull/16) | `k3/menubar-loop-fix` | launch beachball: MenuBarExtra `isInserted` KVO writeback ↔ `@Published` republish feedback loop; deduping setter |
 | [#17](https://github.com/L-K-M/RepoMen/pull/17) | `k3/context-menu-watch` | "Add to Watched Folders" from scan-results context/Items menus (adds the project folder; shared `Preferences.watchFolder`) |
 | [#18](https://github.com/L-K-M/RepoMen/pull/18) | `k3/launch-at-login` | "Open at Login" toggle via SMAppService (no UserDefaults mirror); watch lifecycle copy clarified |
+| [#19](https://github.com/L-K-M/RepoMen/pull/19) | `k3/settings-and-login-toggle-fixes` | search filter stuck on "" (debounce `assign(to:)`), frozen login-toggle checkbox (now persisted pref), dead menu-bar Settings item (SettingsLink) |
 
 > **⚠ CI is not running in this repository.** Every Actions job — including the
 > original `main` commit `a7190a7`, before any review changes — "fails" within ~2
