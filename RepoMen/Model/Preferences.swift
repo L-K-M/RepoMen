@@ -21,6 +21,7 @@ final class Preferences: ObservableObject {
         static let scanAtLaunch = "scanAtLaunch"
         static let lastWatchRun = "lastWatchRun"
         static let lastWatchDryRunSignature = "lastWatchDryRunSignature"
+        static let launchAtLogin = "launchAtLogin"
     }
 
     /// Folders whose trees are deep-scanned for project artifacts (absolute paths).
@@ -80,6 +81,17 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(scanAtLaunch, forKey: Key.scanAtLaunch) }
     }
 
+    /// Whether the app registers as a login item (Settings → General). A plain
+    /// persisted preference driving the toggle — with a SMAppService-backed binding
+    /// the checkbox never re-rendered on click (nothing published the change).
+    /// Registration is applied on change.
+    @Published var launchAtLogin: Bool {
+        didSet {
+            defaults.set(launchAtLogin, forKey: Key.launchAtLogin)
+            LaunchAtLogin.set(launchAtLogin)
+        }
+    }
+
     /// The most recent watch check's outcome, for the menu bar and Settings.
     @Published var lastWatchRun: WatchRunRecord? {
         didSet { defaults.set(try? JSONEncoder().encode(lastWatchRun), forKey: Key.lastWatchRun) }
@@ -115,6 +127,7 @@ final class Preferences: ObservableObject {
         self.watchAutoTrash = defaults.object(forKey: Key.watchAutoTrash) as? Bool ?? false
         self.showInMenuBar = defaults.object(forKey: Key.showInMenuBar) as? Bool ?? false
         self.scanAtLaunch = defaults.object(forKey: Key.scanAtLaunch) as? Bool ?? false
+        self.launchAtLogin = defaults.object(forKey: Key.launchAtLogin) as? Bool ?? false
         self.lastWatchRun = defaults.data(forKey: Key.lastWatchRun)
             .flatMap { try? JSONDecoder().decode(WatchRunRecord.self, from: $0) }
         self.lastWatchDryRunSignature = defaults.string(forKey: Key.lastWatchDryRunSignature) ?? ""

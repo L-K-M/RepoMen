@@ -45,9 +45,7 @@ private struct GeneralSettingsView: View {
             Divider()
 
             Toggle("Scan automatically when RepoMen opens", isOn: $preferences.scanAtLaunch)
-            Toggle("Open RepoMen automatically when you log in", isOn: Binding(
-                get: { LaunchAtLogin.isEnabled },
-                set: { LaunchAtLogin.set($0) }))
+            Toggle("Open RepoMen automatically when you log in", isOn: $preferences.launchAtLogin)
             Toggle("Show RepoMen in the menu bar", isOn: $preferences.showInMenuBar)
             Text("The menu bar extra shows watch status and quick actions. With watch folders armed and login launch on, RepoMen keeps them clean whenever your Mac is on.")
                 .font(.caption)
