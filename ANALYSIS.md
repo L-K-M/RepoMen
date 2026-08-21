@@ -42,16 +42,18 @@ on merge, keep both changes. #2 composes with #1's model-side scan/reclaim exclu
 | [#17](https://github.com/L-K-M/RepoMen/pull/17) | `k3/context-menu-watch` | "Add to Watched Folders" from scan-results context/Items menus (adds the project folder; shared `Preferences.watchFolder`) |
 | [#18](https://github.com/L-K-M/RepoMen/pull/18) | `k3/launch-at-login` | "Open at Login" toggle via SMAppService (no UserDefaults mirror); watch lifecycle copy clarified |
 | [#19](https://github.com/L-K-M/RepoMen/pull/19) | `k3/settings-and-login-toggle-fixes` | search filter stuck on "" (debounce `assign(to:)`), frozen login-toggle checkbox (now persisted pref), dead menu-bar Settings item (SettingsLink) |
+| [#20](https://github.com/L-K-M/RepoMen/pull/20) | `claude/rtcreporting-logs-cleanup-rr0ffs` | System areas: admin-gated scan + privileged cleanup of root-owned RTCReporting logs and caches (new Y1-Y3 follow-ups) |
 
-> **⚠ CI is not running in this repository.** Every Actions job — including the
-> original `main` commit `a7190a7`, before any review changes — "fails" within ~2
-> seconds with no runner assigned and no logs. That is the signature of macOS runners
-> being unavailable to the account (this repo is private; macOS runners bill at 10×
-> minutes, and an exhausted free tier or a zero spending limit fails jobs instantly).
-> Until Actions billing/spending is sorted out in the GitHub account settings, none of
-> the review PRs (claude's #1–#9 or k3's #12–#14) have been machine-verified: they
-> were written without a local Xcode toolchain and reviewed by hand only. Run the
-> suite locally (`xcodebuild … clean test`) or fix Actions before merging.
+> **⚠ No Actions job runs in this repository — on any runner.** Every job —
+> including the original `main` commit `a7190a7`, before any review changes —
+> "fails" within ~2-5 seconds with no runner assigned and no logs. PR #20 ruled out
+> the earlier macOS-billing theory: the **GLM 5.2 review** workflow fails the same
+> way (~3 s, log download HTTP 404) and it runs on `ubuntu-latest`. So Actions is not
+> assigning runners for this private repo at all, whatever the OS — see Y3. Until
+> that is resolved in the account settings, nothing here has been machine-verified:
+> claude's #1–#9, k3's #12–#19 and #20 were written without a local Xcode toolchain
+> and reviewed by hand only, and no automated reviewer has ever commented. Run the
+> suite locally (`xcodebuild … clean test`) before trusting any of it.
 
 ---
 
@@ -197,6 +199,37 @@ code work until a decision lands.
 
 ---
 
+## Open: system areas (created by PR #20)
+
+### Y1 — `PrivilegedRunner` drains its child's output after exit 🟡 S
+`run(script:)` reads stdout in the `terminationHandler`, which is only safe while the
+output fits the pipe buffer (~64 KB). The probe emits one ~120-byte record per *direct
+child* of the two catalog roots, so real systems (a few dozen children) sit roughly 10x
+under the limit, and Stop recovers even if it were exceeded (the cancellation handler
+terminates osascript). The bound is documented at the site that relies on it. Convert
+stdout to a temporary file — or drain concurrently — on a machine that can run the
+suite, and the constraint disappears entirely.
+**Do not** make the probe's output per-file; that is what would actually breach it.
+
+### Y2 — Stop during a privileged delete can leave stale rows 🟡 S
+`SystemReclaimer` deletes a whole batch in one script, so cancelling mid-run terminates
+osascript and every item in that batch is reported as failed — including any already
+removed by `rm -rf`. Those rows then linger in the table (system rows deliberately
+survive a normal rescan, so only another System Scan refreshes them); re-reclaiming one
+reports `GONE`, which is harmless. Options: emit per-path verdicts incrementally, or
+drop rows the next probe no longer sees. Low priority — the window is one brief click.
+
+### Y3 — Automated review is unavailable in this repo 🟠 infrastructure
+PR #20 confirmed the CI diagnosis is broader than ANALYSIS assumed: the **GLM 5.2
+review** workflow also fails in ~3 seconds with **no logs (HTTP 404)** — and it runs on
+`ubuntu-latest`, not macOS. So this is not the "macOS runners bill at 10x" theory; GitHub
+Actions is not assigning runners for this private repo at all, on any OS. Until Actions
+billing/spending is resolved in the account settings, *neither* the build/test job *nor*
+the automated reviewer can run, and every PR merges on hand review only. That is the
+single highest-value infrastructure fix in this backlog.
+
+---
+
 ## Considered and rejected (kept so they aren't rediscovered)
 
 - **I14 — Menu-bar reclaimable total:** superseded in part by watch mode (PR #12):
@@ -221,4 +254,7 @@ default; nothing is ever pre-selected; Docker/OrbStack/backups/photo libraries s
 out; the deep scan stays out of `~/Library` (KnownCaches owns it). Watch mode (PR
 #12) extends the model without changing it: automation is opt-in, auto-clean is
 always Trash (never permanent delete), and every auto-reclaim passes the same
-re-verification at trash time.
+re-verification at trash time. System areas (PR #20) are the
+only paths outside home: a fixed catalog, direct children only, validated in Swift and
+re-checked as root before every `rm`, always permanent delete (the Trash cannot hold
+root-owned files), explicit user action only, never watch mode.
