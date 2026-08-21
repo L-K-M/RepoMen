@@ -9,7 +9,9 @@ struct DetailView: View {
 
     var body: some View {
         Group {
-            if model.items.isEmpty && !model.isBusy {
+            // A running system scan counts as busy here too: the footer (which
+            // carries its progress line and Stop button) lives on the table branch.
+            if model.items.isEmpty && !model.isBusy && !model.isSystemScanning {
                 EmptyStateView()
             } else {
                 VStack(spacing: 0) {
@@ -31,7 +33,8 @@ struct DetailView: View {
             isPresented: $model.confirmingReclaim,
             titleVisibility: .visible
         ) {
-            Button(model.preferences.moveToTrash ? "Move to Trash" : "Delete Permanently",
+            Button(model.preferences.moveToTrash && !allCheckedAreSystemAreas
+                       ? "Move to Trash" : "Delete Permanently",
                    role: .destructive) {
                 model.reclaimChecked()
             }
@@ -40,13 +43,25 @@ struct DetailView: View {
             Text(confirmationMessage)
         }
         .alert(
+            "System scan failed",
+            isPresented: Binding(
+                get: { model.systemScanError != nil },
+                set: { if !$0 { model.systemScanError = nil } })
+        ) {
+            Button("OK") { model.systemScanError = nil }
+        } message: {
+            Text(model.systemScanError ?? "")
+        }
+        .alert(
             summaryTitle,
             isPresented: Binding(
                 get: { model.summary != nil },
                 set: { if !$0 { model.summary = nil } }),
             presenting: model.summary
         ) { summary in
-            if summary.trashed && summary.reclaimedCount > 0 {
+            // Only offered when something actually landed in the Trash — system
+            // items are deleted outright even in a Trash batch.
+            if summary.trashed && summary.reclaimedCount > summary.systemDeleted {
                 Button("Open Trash") { openTrash() }
             }
             Button("OK") { model.summary = nil }
@@ -60,13 +75,21 @@ struct DetailView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            if model.isBusy {
+            // A system scan is a scan too: show Stop rather than a Scan button that
+            // looks enabled but would no-op against the model's guard.
+            if model.isBusy || model.isSystemScanning {
                 Button {
-                    model.cancelScan()
+                    if model.isSystemScanning {
+                        model.cancelSystemScan()
+                    } else {
+                        model.cancelScan()
+                    }
                 } label: {
                     Label("Stop", systemImage: "stop.circle")
                 }
-                .help("Stop the scan")
+                .help(model.isSystemScanning
+                      ? "Stop the system scan (dismisses the password prompt)"
+                      : "Stop the scan")
             } else {
                 Button {
                     model.startScan()
@@ -80,11 +103,19 @@ struct DetailView: View {
             }
 
             Button {
+                model.scanSystemAreas()
+            } label: {
+                Label("System Scan", systemImage: "lock.shield")
+            }
+            .disabled(model.isBusy || model.isReclaiming || model.isSystemScanning)
+            .help("Find root-owned system logs and caches (like rtcreportingd's RTCReporting logs) — macOS asks for your administrator password")
+
+            Button {
                 model.confirmingReclaim = true
             } label: {
                 Label("Reclaim…", systemImage: "trash")
             }
-            .disabled(model.checkedItems.isEmpty || model.isReclaiming)
+            .disabled(model.checkedItems.isEmpty || model.isReclaiming || model.isSystemScanning)
             .help(model.preferences.moveToTrash
                   ? "Move the checked items to the Trash (⌘⌫)"
                   : "Permanently delete the checked items (⌘⌫)")
@@ -143,6 +174,17 @@ struct DetailView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+            } else if model.isSystemScanning {
+                ProgressView()
+                    .controlSize(.small)
+                Text(model.systemScanStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Button("Stop") { model.cancelSystemScan() }
+                    .controlSize(.small)
+                    .help("Stop the system scan (dismisses the password prompt)")
             } else {
                 let visible = model.visibleItems
                 Text("\(visible.count) item\(visible.count == 1 ? "" : "s") · \(Format.bytes(visible.reduce(0) { $0 + $1.sizeBytes })) reclaimable")
@@ -210,6 +252,13 @@ struct DetailView: View {
         return "Reclaim \(count) item\(count == 1 ? "" : "s") (\(checkedSizeText))?"
     }
 
+    /// Root-owned items can only ever be deleted permanently — when the whole
+    /// selection is system areas, the destructive button must not promise the Trash.
+    private var allCheckedAreSystemAreas: Bool {
+        let checked = model.checkedItems
+        return !checked.isEmpty && checked.allSatisfy(\.isSystemArea)
+    }
+
     /// The last look: names the biggest items, calls out warnings, and counts
     /// anything the current filter is hiding — the user should never confirm the
     /// deletion of things they cannot see.
@@ -237,8 +286,12 @@ struct DetailView: View {
         if slow > 0 {
             lines.append("Includes \(slow) item\(slow == 1 ? "" : "s") that \(slow == 1 ? "is" : "are") slow to rebuild.")
         }
+        let system = checked.filter(\.isSystemArea).count
+        if system > 0 {
+            lines.append("⚠︎ \(system) system item\(system == 1 ? " is" : "s are") root-owned: deleted permanently with administrator privileges (macOS asks for your password) — the Trash can't take them.")
+        }
 
-        lines.append(model.preferences.moveToTrash
+        lines.append(model.preferences.moveToTrash && !allCheckedAreSystemAreas
              ? "Everything is re-verified first and goes to the Trash — you can put it back."
              : "Everything is re-verified first, then deleted immediately. This cannot be undone.")
         return lines.joined(separator: "\n")
@@ -253,6 +306,9 @@ struct DetailView: View {
     }
 
     private func summaryText(_ summary: ReclaimSummary) -> String {
+        // System items never reach the Trash, so a Trash batch that reclaimed only
+        // system items must not talk about the Trash at all.
+        let anyTrashed = summary.trashed && summary.reclaimedCount > summary.systemDeleted
         var text: String
         if summary.reclaimedCount == 0 {
             text = "Nothing was reclaimed."
@@ -264,11 +320,14 @@ struct DetailView: View {
                 ? "at least \(Format.bytes(summary.freedBytes))"
                 : Format.bytes(summary.freedBytes)
             text = "Reclaimed \(items) — \(bytes) "
-                + (summary.trashed ? "moved to the Trash." : "deleted.")
+                + (anyTrashed ? "moved to the Trash." : "deleted.")
             if summary.unmeasuredReclaimed > 0 {
                 text += "\n\(summary.unmeasuredReclaimed) item\(summary.unmeasuredReclaimed == 1 ? "was" : "s were") reclaimed before measuring finished, so the true total is higher."
             }
-            if summary.trashed {
+            if anyTrashed && summary.systemDeleted > 0 {
+                text += "\n\(summary.systemDeleted) system item\(summary.systemDeleted == 1 ? " was" : "s were") deleted permanently — root-owned items can't go to the Trash."
+            }
+            if anyTrashed {
                 text += "\n\nThe space frees up once you empty the Trash. Changed your mind? Right-click an item there and choose Put Back."
             } else if let before = summary.freeBytesBefore,
                       let after = summary.freeBytesAfter, after > before {

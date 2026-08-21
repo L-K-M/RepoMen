@@ -43,6 +43,13 @@ enum Reclaimer {
         for (index, item) in kept.enumerated() {
             if Task.isCancelled { break }
             progress?(index + 1, kept.count, item)
+            // System-area items belong to SystemReclaimer; even if a routing bug
+            // sent one here, the home-only guards below must never see it succeed.
+            if item.isSystemArea {
+                outcomes.append(Outcome(item: item,
+                    failure: "a system area — reclaimed with administrator privileges only"))
+                continue
+            }
             if let failure = verify(item, home: resolvedHome, cacheRoots: cacheRoots, fileManager: fileManager) {
                 Log.reclaim.warning("skipped \(item.path, privacy: .public): \(failure, privacy: .public)")
                 outcomes.append(Outcome(item: item, failure: failure))

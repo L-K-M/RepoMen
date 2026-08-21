@@ -154,6 +154,19 @@ final class ReclaimerTests: XCTestCase {
         XCTAssertTrue(fileManager.fileExists(atPath: outside.appendingPathComponent("target").path))
     }
 
+    func testRefusesSystemAreaItems() throws {
+        // System areas belong to SystemReclaimer; even if a routing bug sent one
+        // here, the ordinary reclaimer must refuse it — whatever its path says.
+        let dir = home.appendingPathComponent("dev/proj/logs-impostor")
+        try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        let item = CleanableItem(label: "Root logs · impostor", kind: .systemLogs,
+                                 path: dir.path, anchorPaths: [], isKnownCache: true,
+                                 isSystemArea: true)
+        let outcomes = Reclaimer.reclaim([item], method: .delete, home: home)
+        XCTAssertNotNil(outcomes.first?.failure)
+        XCTAssertTrue(fileManager.fileExists(atPath: dir.path))
+    }
+
     func testNestedSelectionsCollapseToOutermost() throws {
         let item = try makeProject()
         let nested = CleanableItem(label: "proj/target/debug", kind: .rustTarget,

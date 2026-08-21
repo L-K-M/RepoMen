@@ -88,6 +88,24 @@ struct EmptyStateView: View {
                     .disabled(preferences.scanRoots.isEmpty)
                 Button("Choose Folders…") { SettingsOpener.open() }
             }
+
+            // "Nothing found" is exactly where the user who *knows* their disk is
+            // full lands — so the root-owned areas get offered here, not just
+            // described. Never the default action: it always costs a password.
+            VStack(spacing: 6) {
+                Button("System Scan…") { model.scanSystemAreas() }
+                Text("""
+                    Disk still mysteriously full? Root-owned logs — like the \
+                    RTCReporting logs a busy rtcreportingd can grow to tens of \
+                    gigabytes — live outside your home folder, where no ordinary \
+                    scan can see them. macOS asks for your administrator password.
+                    """)
+                    .font(.caption)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: 440)
+            }
+            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(30)

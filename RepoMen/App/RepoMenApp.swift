@@ -31,16 +31,27 @@ struct RepoMenApp: App {
             CommandMenu("Scan") {
                 Button("Scan Now") { model.startScan() }
                     .keyboardShortcut("r")
-                    .disabled(model.isBusy || model.isReclaiming)
-                Button("Stop Scan") { model.cancelScan() }
+                    .disabled(model.isBusy || model.isReclaiming || model.isSystemScanning)
+                // Ellipsis: it always costs an admin-password prompt.
+                Button("Scan System Areas…") { model.scanSystemAreas() }
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
+                    .disabled(model.isBusy || model.isReclaiming || model.isSystemScanning)
+                Button("Stop Scan") {
+                    if model.isSystemScanning {
+                        model.cancelSystemScan()
+                    } else {
+                        model.cancelScan()
+                    }
+                }
                     .keyboardShortcut(".")
-                    .disabled(!model.isBusy)
+                    .disabled(!model.isBusy && !model.isSystemScanning)
                 Divider()
                 // ⌘⌫ — Finder's "Move to Trash" chord. It only opens the confirmation
                 // dialog; the destructive step still takes an explicit click there.
                 Button("Reclaim Checked…") { model.confirmingReclaim = true }
                     .keyboardShortcut(.delete, modifiers: .command)
-                    .disabled(model.checkedItems.isEmpty || model.isReclaiming)
+                    .disabled(model.checkedItems.isEmpty || model.isReclaiming
+                              || model.isSystemScanning)
             }
             // The context menu's row actions, discoverable and Help-searchable.
             CommandMenu("Items") {

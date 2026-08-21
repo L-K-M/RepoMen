@@ -18,6 +18,9 @@ struct ReclaimSummary: Identifiable, Sendable {
     let unmeasuredReclaimed: Int
     /// "label: reason" for every skipped/failed item.
     let failures: [String]
+    /// Successfully reclaimed system-area items. Root-owned, so they were deleted
+    /// permanently even in a Trash batch — the summary must say so.
+    let systemDeleted: Int
     let trashed: Bool
     /// True when the user stopped the batch early — unprocessed items stay checked.
     let cancelled: Bool
@@ -190,7 +193,8 @@ final class AppModel: ObservableObject {
     // MARK: Scanning
 
     func startScan() {
-        guard !isReclaiming else { return }   // never walk the tree mid-deletion
+        // Never walk the tree mid-deletion, and never race the privileged probe.
+        guard !isReclaiming, !isSystemScanning else { return }
         scanTask?.cancel()
         scanGeneration += 1
         let generation = scanGeneration
@@ -202,7 +206,10 @@ final class AppModel: ObservableObject {
         // Snapshot the open apps on the main thread; the walk runs detached.
         let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
 
-        items = []
+        // System-area rows survive a normal rescan: they came from a separate,
+        // admin-gated probe, and dropping them would cost another password prompt
+        // to get back. Everything else is replaced by this scan's findings.
+        items = items.filter(\.isSystemArea)
         // The selection is NOT cleared: ids are stable paths, so a rescan keeps
         // whatever is still found (intersected with the new results below).
         phase = .scanning
@@ -231,9 +238,9 @@ final class AppModel: ObservableObject {
             let discovered = found + caches
             await MainActor.run { [weak self] in
                 guard let self, self.scanGeneration == generation else { return }
-                self.items = discovered
+                self.items = discovered + self.items.filter(\.isSystemArea)
                 // Keep the user's checks across the rescan for anything still found.
-                self.checkedIDs = self.checkedIDs.intersection(discovered.map(\.id))
+                self.checkedIDs = self.checkedIDs.intersection(self.items.map(\.id))
                 self.phase = .measuring
                 self.scanStatus = "Measuring \(discovered.count) items…"
             }
@@ -261,6 +268,74 @@ final class AppModel: ObservableObject {
         pendingMeasurements = [:]
         phase = items.isEmpty ? .idle : .ready
         scanStatus = ""
+    }
+
+    // MARK: System areas (admin-gated)
+
+    /// True while the privileged probe runs (password dialog up, or `du` walking
+    /// the root-owned trees).
+    @Published private(set) var isSystemScanning = false
+    @Published private(set) var systemScanStatus = ""
+    /// A failed probe's message, presented as an alert. A cancelled password dialog
+    /// stays silent — the user knows they cancelled.
+    @Published var systemScanError: String?
+
+    private var systemScanTask: Task<Void, Never>?
+
+    /// Scans the root-owned `SystemAreas` catalog (RTCReporting logs and friends).
+    /// Deliberately separate from `startScan`: it always costs an admin-password
+    /// prompt, so it runs only when explicitly asked — never as part of a normal
+    /// scan, and never from watch mode.
+    func scanSystemAreas() {
+        guard !isBusy, !isReclaiming, !isSystemScanning else { return }
+        let excluded = Set(preferences.excludedPaths)
+        let enabled = preferences.enabledKinds
+        // Snapshot the open apps on the main thread, like startScan does.
+        let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        isSystemScanning = true
+        systemScanStatus = "Scanning system areas — macOS asks for your administrator password…"
+        Log.scan.info("system-area scan started")
+
+        systemScanTask = Task { [weak self] in
+            do {
+                let found = try await SystemScanner.scan(
+                    excludedPaths: excluded, enabledKinds: enabled,
+                    isRunning: { running.contains($0) })
+                guard let self else { return }
+                // Stop pressed while the probe was finishing: results from a run the
+                // user abandoned must not appear (same rule as the ordinary scan).
+                guard !Task.isCancelled else {
+                    self.finishSystemScan()
+                    Log.scan.info("system-area scan cancelled")
+                    return
+                }
+                self.items = self.items.filter { !$0.isSystemArea } + found
+                self.checkedIDs = self.checkedIDs.intersection(self.items.map(\.id))
+                self.finishSystemScan()
+                Log.scan.info("system-area scan finished: \(found.count) items")
+            } catch {
+                guard let self else { return }
+                self.finishSystemScan()
+                if Task.isCancelled || (error as? PrivilegedRunner.Failure) == .cancelled {
+                    Log.scan.info("system-area scan cancelled")
+                } else {
+                    let message = (error as? PrivilegedRunner.Failure)?.errorDescription
+                        ?? error.localizedDescription
+                    self.systemScanError = message
+                    Log.scan.error("system-area scan failed: \(message, privacy: .public)")
+                }
+            }
+        }
+    }
+
+    /// Terminates the probe (dismissing a pending password dialog with it).
+    func cancelSystemScan() {
+        systemScanTask?.cancel()
+    }
+
+    private func finishSystemScan() {
+        isSystemScanning = false
+        systemScanStatus = ""
     }
 
     /// Sizes all items with bounded concurrency — sizing hammers the disk, and a few
@@ -381,7 +456,11 @@ final class AppModel: ObservableObject {
 
     func reclaimChecked() {
         let targets = checkedItems
-        guard !targets.isEmpty, !isReclaiming else { return }
+        guard !targets.isEmpty, !isReclaiming, !isSystemScanning else { return }
+        // Root-owned system items take the privileged path (one admin prompt for
+        // the lot, permanent delete); everything else goes through Reclaimer.
+        let systemTargets = targets.filter(\.isSystemArea)
+        let normalTargets = targets.filter { !$0.isSystemArea }
         let method: Reclaimer.Method = preferences.moveToTrash ? .trash : .delete
         isReclaiming = true
         Self.activeReclaimCount += 1
@@ -389,11 +468,26 @@ final class AppModel: ObservableObject {
         let freeBefore = Self.volumeFreeBytes()
 
         reclaimTask = Task.detached(priority: .userInitiated) { [weak self] in
-            let outcomes = Reclaimer.reclaim(targets, method: method) { current, total, item in
+            var outcomes: [Reclaimer.Outcome] = []
+            // System items first: their password prompt appears right after the
+            // user confirms, not after a long normal batch they walked away from.
+            if !systemTargets.isEmpty {
                 Task { @MainActor [weak self] in
                     guard let self, self.isReclaiming else { return }
                     self.reclaimProgress = ReclaimProgress(
-                        current: current, total: total, label: item.label)
+                        current: 1, total: targets.count,
+                        label: "system areas (administrator password)")
+                }
+                outcomes += await SystemReclaimer.reclaim(systemTargets)
+            }
+            if !normalTargets.isEmpty {
+                outcomes += Reclaimer.reclaim(normalTargets, method: method) { current, total, item in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.isReclaiming else { return }
+                        self.reclaimProgress = ReclaimProgress(
+                            current: systemTargets.count + current,
+                            total: systemTargets.count + total, label: item.label)
+                    }
                 }
             }
             let cancelled = Task.isCancelled
@@ -430,6 +524,7 @@ final class AppModel: ObservableObject {
                     failures: outcomes.compactMap { outcome in
                         outcome.failure.map { "\(outcome.item.label): \($0)" }
                     },
+                    systemDeleted: reclaimed.filter(\.item.isSystemArea).count,
                     trashed: method == .trash,
                     cancelled: cancelled,
                     freeBytesBefore: freeBefore,
