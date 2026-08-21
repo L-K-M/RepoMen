@@ -23,6 +23,11 @@ struct CleanableItem: Identifiable, Hashable, Sendable {
     var lastModified: Date = .distantPast
     /// A reason for caution ("Chrome is running"), shown as a badge; never blocks.
     var warning: String?
+    /// A root-owned `SystemAreas` item (RTCReporting logs and friends): found by the
+    /// admin-gated probe, already measured on arrival, and reclaimed by
+    /// `SystemReclaimer` (permanent delete as root) — never by `Reclaimer`, whose
+    /// home-only guards it could not pass.
+    var isSystemArea: Bool = false
 
     var id: String { path }
     var url: URL { URL(fileURLWithPath: path) }

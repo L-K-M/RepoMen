@@ -13,6 +13,10 @@ to the Trash. See [PLAN.md](PLAN.md) for the design and, critically, the trust m
 - `RepoMen/Scan` — `RuleCatalog` (pure, data-driven anchor rules), `Scanner` (the
   walk), `KnownCaches` (fixed cache locations incl. browsers), `DirectorySizer`.
 - `RepoMen/Reclaim` — `PathGuards` (pure validation), `Reclaimer` (re-verify + trash).
+- `RepoMen/System` — root-owned system areas (RTCReporting logs etc., admin-gated):
+  `SystemAreas` (fixed catalog + its own validate), `PrivilegedRunner` (osascript
+  admin bridge + quoting/escaping), `SystemScanner` (probe + pure parser),
+  `SystemReclaimer` (privileged, permanent delete).
 - `RepoMen/Watch` — watched-folders automation: `WatchedFolder` (+`WatchRunRecord`),
   `WatchEngine` (pure eligibility), `WatchManager` (periodic check → trash),
   `WatchNotifier` (notifications).
@@ -38,6 +42,14 @@ edits needed (except when adding a Swift Package).
     Never weaken these to "fix" a false negative; add a better anchor instead.
   - Default reclaim method is the Trash. Permanent delete stays opt-in.
   - Nothing is ever pre-selected, and every reclaim passes a confirmation dialog.
+  - System areas are the ONLY paths outside home, and they are locked down twice:
+    every path must pass `SystemAreas.validate` (a direct child of one of the two
+    catalog roots, nothing else), and the privileged script re-checks it as root
+    before `rm`. System scans/reclaims run only on explicit user action (one admin
+    prompt each), deletion is always permanent and says so in the UI, and watch
+    mode never touches them. Never widen the catalog beyond locations that are
+    disposable by macOS contract, and never route system items through `Reclaimer`
+    (it refuses them) or normal items through `SystemReclaimer` (same).
 - **Adding a scan rule**: extend `RuleCatalog.rules` (and `neverDescend` if the name
   is unambiguous) + add `RuleCatalogTests`. A rule must name an anchor or an inner
   anchor unless its directory name is globally unambiguous.
@@ -45,6 +57,9 @@ edits needed (except when adding a Swift Package).
   owning tool rebuilds on demand; keep Docker & friends out (see PLAN.md non-goals).
   If a new location is outside `~/Library/Caches`, `allowedRoots` covers it
   automatically via the spec — verify with `KnownCachesTests.testAllowedRootsCoverEverySpec`.
+- **Adding a system area**: extend `SystemAreas.roots` (and `culprits` if a running
+  app keeps it growing) + `SystemAreasTests`. Only root-owned locations disposable
+  by macOS contract; the probe and reclaimer pick up new roots automatically.
 - Scanning/sizing/reclaiming run detached; UI state mutations happen on the main
   actor (`AppModel`).
 

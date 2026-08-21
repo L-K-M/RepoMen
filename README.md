@@ -37,6 +37,14 @@ containers you still need). RepoMen sits deliberately in the middle:
   rebuild".
 - **Browser caches:** per-profile `Cache`/`Code Cache` for Chrome, Brave, Edge, Arc,
   Vivaldi, Chromium, Firefox — with a warning badge while the browser is running.
+- **System areas (opt-in, admin):** root-owned logs and caches that no unprivileged
+  tool can even see — most notably the [runaway `rtcreportingd` logs](https://mjtsai.com/blog/2026/08/21/huge-rtcreporting-logs-and-dropbox/)
+  that fill `/private/var/root/Library/Logs/RTCReporting` with 60–70+ GB (usually
+  provoked by Dropbox), plus multi-GB caches under root's `Library/Caches`. A
+  separate **System Scan** asks for your administrator password, lists each folder
+  with its size, and warns while Dropbox is running (the logs regrow until it
+  quits). Reclaiming these is always a permanent delete — root-owned files can't go
+  to the Trash — re-verified as root right before removal.
 
 See [PLAN.md](PLAN.md) for the full design and trust model.
 
@@ -59,6 +67,11 @@ protected folder (e.g. `~/Documents`).
 2. Check what you want gone — or use **Select → Idle 30+ Days** for the one-click
    "everything I haven't built in a month".
 3. **Reclaim…** — confirm, and RepoMen reports how much it repossessed.
+
+**System Scan** (⌘⇧R) covers the root-owned areas a normal scan can't reach
+(RTCReporting logs and friends). macOS asks for your administrator password once
+per scan and once per reclaim; checked system items are deleted permanently (the
+Trash can't take root-owned files) after being re-verified as root.
 
 Right-click any row to reveal it in Finder or exclude it from future scans. Settings
 (⌘,) manages scan folders, per-kind rule toggles, and Trash vs. permanent delete.

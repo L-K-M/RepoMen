@@ -91,6 +91,37 @@ one item). A matched dir with no anchor is left alone; unambiguous artifact name
 
 Everything here is a cache by contract: the owning tool rebuilds it on demand.
 
+### System areas (root-owned, admin-gated)
+
+The one place RepoMen looks outside your home folder — because a real failure mode
+lives there: a busy `rtcreportingd` (typically kept busy by Dropbox's FileProvider
+integration) fills `/private/var/root/Library/Logs/RTCReporting` with tens of
+gigabytes of message logs, plus multi-GB event caches under root's
+`Library/Caches` — all invisible to `du`, Finder, and every unprivileged cleaner
+([the report that motivated this](https://mjtsai.com/blog/2026/08/21/huge-rtcreporting-logs-and-dropbox/)).
+
+`SystemAreas` is a fixed two-root catalog (root's `Library/Logs` and
+`Library/Caches`); both are disposable by macOS contract — logs are diagnostic
+output nothing reads back, caches are rebuilt on demand. Because `/var/root` is
+unreadable to the app, detection and deletion run as root through one AppleScript
+`do shell script … with administrator privileges` per action (`PrivilegedRunner`):
+
+- **Explicit only.** A System Scan is its own button/menu item — it never rides
+  along with a normal scan, and watch mode never touches it. Every scan or reclaim
+  costs exactly one admin-password prompt, and cancelling the prompt is a clean
+  no-op.
+- **Direct children only.** The probe reports (and the reclaimer accepts) only
+  immediate subdirectories of the two catalog roots — never the roots themselves,
+  never deeper paths, never anything outside. `SystemAreas.validate` enforces this
+  on every path in both directions, and the privileged script re-checks each path
+  as root (still a directory, not a symlink) right before `rm`.
+- **Permanent delete, said out loud.** The Trash is per-user and can't take
+  root-owned trees, so system items are always deleted permanently — the
+  confirmation dialog and the summary both say so explicitly.
+- **Culprit awareness.** While Dropbox is running, RTCReporting items carry a
+  warning: the logs regrow immediately, and files the daemon holds open free no
+  space until it lets go.
+
 ## App shape
 
 Regular windowed SwiftUI app (unlike sibling Gans, which is a menu-bar agent):
@@ -127,7 +158,10 @@ to the Trash. The trust model is unchanged, just automated:
 - Fully unattended cleaning (launchd/login-item helper that runs while the app is
   quit). Watch mode covers "while the app is alive"; headless background cleaning is
   a deliberate future step, not an accident to stumble into.
-- System caches, logs, browser *profiles* (only `Cache`/`Code Cache` subdirs).
+- Browser *profiles* (only `Cache`/`Code Cache` subdirs), and any system-wide
+  cache/log cleaning beyond the fixed `SystemAreas` catalog (root's `Library/Logs`
+  and `Library/Caches`, direct children only, admin-gated — see above). No
+  `/Library`, no other users, no heuristic "system junk".
 - Docker/OrbStack/VM images, simulator *runtimes* (only their caches), Xcode archives
   (they hold dSYMs for shipped builds).
 - Sandboxing/App Store: direct distribution like the sibling apps (unsigned, ad-hoc

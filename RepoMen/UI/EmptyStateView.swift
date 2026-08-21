@@ -88,6 +88,17 @@ struct EmptyStateView: View {
                     .disabled(preferences.scanRoots.isEmpty)
                 Button("Choose Folders…") { SettingsOpener.open() }
             }
+
+            Text("""
+                Disk still mysteriously full? Root-owned system logs (like \
+                rtcreportingd's RTCReporting logs) hide outside your home folder — \
+                run System Scan from the toolbar to check them. macOS asks for your \
+                administrator password.
+                """)
+                .font(.caption)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: 440)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(30)
