@@ -106,15 +106,14 @@ final class SystemScannerTests: XCTestCase {
 
     func testScanRunsProbeAndParses() async throws {
         let payload = record("16", "1700000000", logsChild).base64EncodedString()
-        var scriptSeen: String?
         let found = try await SystemScanner.scan(
             excludedPaths: [], enabledKinds: Set(ArtifactKind.allCases),
             isRunning: { _ in false },
             runner: { script in
-                scriptSeen = script
+                XCTAssertEqual(script, SystemScanner.probeScript,
+                               "the scan must run exactly the vetted probe script")
                 return payload
             })
-        XCTAssertEqual(scriptSeen, SystemScanner.probeScript)
         XCTAssertEqual(found.map(\.path), [logsChild])
     }
 

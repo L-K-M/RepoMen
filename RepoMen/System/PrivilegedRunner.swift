@@ -29,11 +29,9 @@ enum PrivilegedRunner {
     /// Runs `script` as root and returns its stdout. Task cancellation terminates
     /// the osascript process (taking a pending password dialog down with it).
     static func run(script: String) async throws -> String {
-        let source = "do shell script \"\(escapeForAppleScript(script))\""
-            + " with administrator privileges without altering line endings"
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", source]
+        process.arguments = appleScriptArguments(for: script)
         let stdout = Pipe()
         let stderr = Pipe()
         process.standardOutput = stdout
@@ -42,9 +40,13 @@ enum PrivilegedRunner {
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 process.terminationHandler = { finished in
-                    // Both streams are small by construction — a base64 blob with
-                    // one short record per catalog child, far below the 64 KB pipe
-                    // buffer — so draining after exit cannot deadlock.
+                    // Drained after exit, which is safe only while the output fits
+                    // the pipe buffer (~64 KB): one ~120-byte record per DIRECT
+                    // child of the two catalog roots, base64'd — i.e. room for
+                    // several hundred children where real systems have a few dozen.
+                    // A child that overran it would block writing and never exit;
+                    // Stop still recovers (onCancel terminates it). Keep the probe's
+                    // output per-child — never per-file — and that margin holds.
                     let out = String(data: stdout.fileHandleForReading.readDataToEndOfFile(),
                                      encoding: .utf8) ?? ""
                     let err = String(data: stderr.fileHandleForReading.readDataToEndOfFile(),
@@ -73,6 +75,25 @@ enum PrivilegedRunner {
     }
 
     // MARK: Pure helpers (unit-tested; the osascript spawn above is manual-verify)
+
+    /// How long the privileged script may run before AppleScript gives up. The
+    /// default Apple event timeout is ~2 minutes, and `do shell script` is
+    /// dispatched as an Apple event: measuring 70 GB of log files can take longer
+    /// than that and would die with "AppleEvent timed out (-1712)" — the exact case
+    /// this feature exists for. An explicit `with timeout` block lifts the ceiling;
+    /// the user can still stop early (cancelling the task kills osascript).
+    static let timeoutSeconds = 3600
+
+    /// The `osascript` argument list: one `-e` per script line, since AppleScript
+    /// string literals cannot hold raw newlines and `with timeout` needs a block.
+    static func appleScriptArguments(for script: String) -> [String] {
+        [
+            "-e", "with timeout of \(timeoutSeconds) seconds",
+            "-e", "do shell script \"\(escapeForAppleScript(script))\""
+                + " with administrator privileges without altering line endings",
+            "-e", "end timeout",
+        ]
+    }
 
     /// Quotes `string` for POSIX sh so it is always ONE literal word — no expansion,
     /// no splitting — whatever bytes the name contains. (NUL is the one byte sh

@@ -302,6 +302,13 @@ final class AppModel: ObservableObject {
                     excludedPaths: excluded, enabledKinds: enabled,
                     isRunning: { running.contains($0) })
                 guard let self else { return }
+                // Stop pressed while the probe was finishing: results from a run the
+                // user abandoned must not appear (same rule as the ordinary scan).
+                guard !Task.isCancelled else {
+                    self.finishSystemScan()
+                    Log.scan.info("system-area scan cancelled")
+                    return
+                }
                 self.items = self.items.filter { !$0.isSystemArea } + found
                 self.checkedIDs = self.checkedIDs.intersection(self.items.map(\.id))
                 self.finishSystemScan()

@@ -75,13 +75,21 @@ struct DetailView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            if model.isBusy {
+            // A system scan is a scan too: show Stop rather than a Scan button that
+            // looks enabled but would no-op against the model's guard.
+            if model.isBusy || model.isSystemScanning {
                 Button {
-                    model.cancelScan()
+                    if model.isSystemScanning {
+                        model.cancelSystemScan()
+                    } else {
+                        model.cancelScan()
+                    }
                 } label: {
                     Label("Stop", systemImage: "stop.circle")
                 }
-                .help("Stop the scan")
+                .help(model.isSystemScanning
+                      ? "Stop the system scan (dismisses the password prompt)"
+                      : "Stop the scan")
             } else {
                 Button {
                     model.startScan()

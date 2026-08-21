@@ -67,31 +67,28 @@ final class SystemReclaimerTests: XCTestCase {
     }
 
     func testValidationFailuresNeverReachTheScript() async {
-        var scriptSeen: String?
         let bad = systemItem("/private/var/root/Library/Logs/RTCReporting/deep")
         let good = systemItem(logsChild)
         let outcomes = await SystemReclaimer.reclaim([bad, good], runner: { script in
-            scriptSeen = script
+            XCTAssertFalse(script.contains("deep"),
+                           "an invalid path must never be built into the privileged script")
+            XCTAssertTrue(script.contains(self.logsChild),
+                          "the valid path in the same batch still runs")
             return self.payload([("OK", self.logsChild)])
         })
         XCTAssertNotNil(outcomes.first { $0.item.path == bad.path }?.failure)
         XCTAssertNil(outcomes.first { $0.item.path == good.path }?.failure)
-        XCTAssertFalse(scriptSeen?.contains("deep") ?? true,
-                       "an invalid path must never be built into the privileged script")
     }
 
     func testNonSystemItemsAreRefusedWithoutRunningAnything() async {
-        var runnerCalled = false
         let impostor = CleanableItem(label: "impostor", kind: .systemLogs,
                                      path: logsChild, anchorPaths: [],
                                      isKnownCache: true)   // isSystemArea stays false
         let outcomes = await SystemReclaimer.reclaim([impostor], runner: { _ in
-            runnerCalled = true
+            XCTFail("no privileged script may run for a batch with nothing valid")
             return ""
         })
         XCTAssertNotNil(outcomes.first?.failure)
-        XCTAssertFalse(runnerCalled,
-                       "no privileged script may run for a batch with nothing valid")
     }
 
     func testCancelledAuthorizationFailsTheWholeBatchGracefully() async {
