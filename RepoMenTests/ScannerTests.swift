@@ -9,7 +9,10 @@ final class ScannerTests: XCTestCase {
     private let fileManager = FileManager.default
 
     override func setUpWithError() throws {
-        root = URL(fileURLWithPath: NSTemporaryDirectory())
+        // Resolved, because the scanner canonicalizes its roots: on macOS the temp
+        // dir is /var/folders/…, a symlink to /private/var/folders/…, and expected
+        // paths built from the unresolved spelling never match what the scan reports.
+        root = URL(fileURLWithPath: NSTemporaryDirectory()).resolvingSymlinksInPath()
             .appendingPathComponent("RepoMenScannerTests-\(UUID().uuidString)")
         try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
     }

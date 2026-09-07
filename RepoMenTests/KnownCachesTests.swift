@@ -8,7 +8,9 @@ final class KnownCachesTests: XCTestCase {
     private let fileManager = FileManager.default
 
     override func setUpWithError() throws {
-        home = URL(fileURLWithPath: NSTemporaryDirectory())
+        // Resolved for the same reason as ScannerTests: the catalog reports canonical
+        // paths, and /var/folders/… is a symlink to /private/var/folders/… on macOS.
+        home = URL(fileURLWithPath: NSTemporaryDirectory()).resolvingSymlinksInPath()
             .appendingPathComponent("RepoMenKnownCachesTests-\(UUID().uuidString)")
         try fileManager.createDirectory(at: home, withIntermediateDirectories: true)
     }
