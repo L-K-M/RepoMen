@@ -8,12 +8,14 @@ struct RepoMenApp: App {
     @StateObject private var model = AppModel()
     @StateObject private var preferences = Preferences.shared
     @StateObject private var watchManager = WatchManager.shared
+    @StateObject private var snapshotModel = SnapshotModel()
 
     var body: some Scene {
         WindowGroup(id: "main") {
             ContentView()
                 .environmentObject(model)
                 .environmentObject(preferences)
+                .environmentObject(snapshotModel)
                 .frame(minWidth: 780, minHeight: 460)
                 .onAppear {
                     // Opt-in automation: one scan when the window first appears.
@@ -36,6 +38,8 @@ struct RepoMenApp: App {
                 Button("Scan System Areas…") { model.scanSystemAreas() }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
                     .disabled(model.isBusy || model.isReclaiming || model.isSystemScanning)
+                // Opens its own window; listing is read-only and needs no password.
+                OpenSnapshotsWindowButton()
                 Button("Stop Scan") {
                     if model.isSystemScanning {
                         model.cancelSystemScan()
@@ -104,5 +108,25 @@ struct RepoMenApp: App {
                 .environmentObject(preferences)
                 .environmentObject(watchManager)
         }
+
+        // Time Machine local snapshots get their own window rather than rows in the
+        // main table: a snapshot has no path, no measurable size and no Trash, so
+        // every row affordance (Reveal, Exclude, sizing, watch) would be a lie.
+        Window("Time Machine Snapshots", id: "snapshots") {
+            SnapshotsView()
+                .environmentObject(snapshotModel)
+        }
+        .defaultSize(width: 720, height: 540)
+    }
+}
+
+/// The Scan menu's entry to the snapshots window. A separate view so it can read
+/// the `openWindow` action from the environment, which a bare menu `Button` cannot.
+private struct OpenSnapshotsWindowButton: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Time Machine Snapshots…") { openWindow(id: "snapshots") }
+            .keyboardShortcut("s", modifiers: [.command, .shift])
     }
 }

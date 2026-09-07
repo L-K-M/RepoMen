@@ -43,6 +43,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             WatchManager.terminateAfterReclaim = true
             return .terminateLater
         }
+        if SnapshotModel.activeOperationCount > 0 {
+            SnapshotModel.terminateAfterOperation = true
+            return .terminateLater
+        }
         return .terminateNow
     }
 
