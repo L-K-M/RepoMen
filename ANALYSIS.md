@@ -266,12 +266,30 @@ snapshots are purgeable. Still to confirm from the app itself (not Terminal): th
 same delete through `SnapshotRunner` — TCC treats the app, not Terminal, as the
 responsible process, though no local-snapshot verb is Full-Disk-Access-gated.
 
-### Z2 — Per-snapshot sizes 🟠 blocked on Apple
+### Z2 — Per-snapshot sizes 🟠 blocked on Apple (measured after the fact instead)
 Disk Utility shows Private Size / Cumulative Size (Oakley, [Understanding snapshot
 data in Disk Utility](https://eclecticlight.co/2021/11/13/understanding-snapshot-data-in-disk-utility/)),
-but `diskutil apfs listSnapshots -plist` and `tmutil` expose none, and the
-`fs_snapshot_*` syscalls carry no sizes. The window says so and links Disk Utility.
-Revisit only if a public API appears; do not estimate.
+but `diskutil apfs listSnapshots -plist` and `tmutil` expose none, the `fs_snapshot_*`
+syscalls carry no sizes, and on Tahoe Apple removed `diskutil`'s snapshot verbs
+outright — DTS: snapshots are "a special purpose feature" for the boot architecture
+and system backups ([developer forums](https://developer.apple.com/forums/thread/796852)).
+The pane says so and links Disk Utility. What RepoMen does instead: `SnapshotTool.delete`
+brackets each unprivileged delete with plain free-space samples (3 s settle for APFS's
+background cleanup) and the report lists what each snapshot actually freed. The
+privileged batch cannot be attributed per snapshot (one script) and says "size not
+measurable". Do not estimate beforehand; macOS's own "purgeable" total (important-usage
+minus plain free) lumps caches in, ignores third-party snapshots, and is the figure
+Oakley showed lagging or reading zero.
+
+### Z7 — No SwiftUI `Table` in the Snapshots pane 🟠 verified on macOS 26
+Two `Table`-based versions of the pane (a padded VStack around a Table, then the exact
+skeleton `DetailView` uses — bars above and below a Table in a ZStack) both rendered as
+one giant, header-less, edge-to-edge table that pushed every sibling out of view and
+blanked the sidebar's list, on the maintainer's Tahoe Mac. `ItemTable`, a `Table` one
+branch over in the same detail pane, renders fine; the difference is unknown (selection
+binding? sort order? conditional presence?). A plain `ScrollView` + `LazyVStack` of rows
+works. Keep it that way, or find the cause first — Xcode's console at the moment the
+sidebar row is clicked should log the invalid frame.
 
 ### Z3 — Thinning urgency semantics 🟡 doc gap
 `tmutil thinlocalsnapshots` documents urgency only as "1-4". Oakley's logs show

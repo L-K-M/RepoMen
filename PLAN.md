@@ -173,10 +173,13 @@ The trust model, applied to things that are not paths:
   does it fall back to one administrator prompt (`PrivilegedRunner`, a whitelisted
   tmutil line).
 - **No invented sizes.** macOS exposes no per-snapshot size to apps — Disk Utility's
-  Private Size column comes from private API — so the pane shows none, says so,
-  and offers to open Disk Utility. What it does report honestly is the boot volume's
-  plain free space before and after (not `volumeAvailableCapacityForImportantUsage`,
-  which already counts purgeable space and lags).
+  Private Size column comes from private API, and on Tahoe Apple removed even
+  `diskutil`'s snapshot verbs — so the pane shows none, says so, and offers to open
+  Disk Utility. What it does report honestly is measured: each deletion is bracketed
+  by plain free-space samples (with a short settle for APFS's background cleanup), so
+  the report says what every snapshot actually gave back, and the batch total before
+  and after. Plain free space, not `volumeAvailableCapacityForImportantUsage`, which
+  already counts purgeable space and lags.
 
 ## App shape
 
