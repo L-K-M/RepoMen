@@ -43,7 +43,8 @@ on merge, keep both changes. #2 composes with #1's model-side scan/reclaim exclu
 | [#18](https://github.com/L-K-M/RepoMen/pull/18) | `k3/launch-at-login` | "Open at Login" toggle via SMAppService (no UserDefaults mirror); watch lifecycle copy clarified |
 | [#19](https://github.com/L-K-M/RepoMen/pull/19) | `k3/settings-and-login-toggle-fixes` | search filter stuck on "" (debounce `assign(to:)`), frozen login-toggle checkbox (now persisted pref), dead menu-bar Settings item (SettingsLink) |
 | [#20](https://github.com/L-K-M/RepoMen/pull/20) | `claude/rtcreporting-logs-cleanup-rr0ffs` | System areas: admin-gated scan + privileged cleanup of root-owned RTCReporting logs and caches (new Y1-Y3 follow-ups) |
-| (this branch) | `claude/repomen-snapshot-purging-adhb9o` | Time Machine local snapshots: post-reclaim hint, "release space" via `tmutil thinlocalsnapshots`, Snapshots window with per-snapshot delete (new Z1-Z5 follow-ups) |
+| [#21](https://github.com/L-K-M/RepoMen/pull/21) | `claude/repomen-snapshot-purging-adhb9o` | Time Machine local snapshots: post-reclaim hint, "release space" via `tmutil thinlocalsnapshots`, per-snapshot delete (new Z1-Z5 follow-ups); temp-dir test fixtures fixed |
+| (follow-up, same branch) | `claude/repomen-snapshot-purging-adhb9o` | Snapshots move from a separate window into a sidebar destination + pane; snapshots by other apps (Arq, CCC) are listed as "left alone" in the pane and the reclaim summary (new Z6) |
 
 > **⚠ CI history.** Until early September 2026 no Actions job ran here at all: every
 > job "failed" within seconds with no runner and no logs (see Y3 for the record).
@@ -241,17 +242,29 @@ and Howard Oakley's [24 Aug](https://eclecticlight.co/2026/08/24/arent-snapshots
 [27 Aug](https://eclecticlight.co/2026/08/27/why-can-purging-snapshots-fail/) and
 [2 Sep 2026](https://eclecticlight.co/2026/09/02/caches-and-purging-in-macos-tahoe/) articles.
 
-### Z1 — Verify the no-password path on a real Mac 🔴 S (verify first)
+### Z1 — No-password path ✅ verified on a real Mac (7 Sep 2026)
 The tmutil man page marks specific verbs "Requires root and Full Disk Access
-privileges" and none of the local-snapshot verbs carry the tag; Oakley's tmutil guide
-and two Apple Developer Forums posts show `tmutil deletelocalsnapshots <date>`
-succeeding without `sudo`. Nothing on this branch was run on a Mac (no local toolchain;
-CI on `macos-14` runners is intermittent — Y3). Run `tmutil listlocalsnapshots /` and
-`tmutil deletelocalsnapshots <date>` from Terminal as an admin, then from the app. If
-they need root after all, the `PrivilegedRunner` fallback in `SnapshotTool` kicks in
-automatically (one prompt per batch) — decide then whether to keep the unprivileged
-attempt or go straight to the prompt. Also confirm the exact refusal wording so
-`SnapshotRunner.Output.privilegeMarkers` matches it.
+privileges" and none of the local-snapshot verbs carry the tag. Confirmed in Terminal
+as an admin user, no `sudo`, on the maintainer's Mac:
+
+```
+% tmutil localsnapshot
+NOTE: local snapshots are considered purgeable and may be removed at any time by deleted(8).
+Created local snapshot with date: 2026-09-07-152743
+% tmutil deletelocalsnapshots 2026-09-07-152743
+Deleted local snapshot '2026-09-07-152743'
+```
+
+So the app's first attempt (unprivileged `SnapshotRunner`) is the normal path. The
+`PrivilegedRunner` fallback stays: it costs nothing unless tmutil's refusal mentions
+privileges (`SnapshotRunner.Output.privilegeMarkers`), and standard (non-admin)
+accounts have not been tested. Two field notes from the same session: a bare
+`YYYY-MM-DD` operand is read as a mount point ("2026-08-01 is not a valid disk /
+POSIXError … Code=22"), which is why RepoMen only ever passes the full 17-character
+token; and `tmutil localsnapshot`'s stderr NOTE is Apple's own statement that these
+snapshots are purgeable. Still to confirm from the app itself (not Terminal): the
+same delete through `SnapshotRunner` — TCC treats the app, not Terminal, as the
+responsible process, though no local-snapshot verb is Full-Disk-Access-gated.
 
 ### Z2 — Per-snapshot sizes 🟠 blocked on Apple
 Disk Utility shows Private Size / Cumulative Size (Oakley, [Understanding snapshot
@@ -271,6 +284,18 @@ and no more. Observe on a real Mac and tighten the labels.
 includes purgeable space (snapshots among it) and, per Oakley's timeline, lags by
 10–30 minutes. The snapshot hint now explains a flat number; consider showing plain
 `volumeAvailableCapacity` alongside (the Snapshots window already uses it).
+
+### Z6 — `listlocalsnapshots` lists everyone's snapshots 🟠 verified in the field
+Despite the verb's name, `tmutil listlocalsnapshots /` printed an Arq agent snapshot
+(`com_haystacksoftware_arqagent_<UUID>_6`) on a Mac with no Time Machine local
+snapshots. The `LocalSnapshot` name filter is therefore load-bearing, and the pane
+and reclaim summary now name foreign snapshots as "left alone" (owner guessed from
+the prefix: Arq, Carbon Copy Cloner, macOS update). Unverified: whether
+`tmutil deletelocalsnapshots <date>` could ever match a third-party snapshot whose
+name embeds the same date token (Carbon Copy Cloner's do). RepoMen never passes a
+token it didn't parse from a `com.apple.TimeMachine.<date>.local` name, but if a CCC
+snapshot shared a Time Machine snapshot's exact token, tmutil's own matching decides.
+Check on a Mac with both.
 
 ### Z5 — Only the boot volume; by-date deletion spans disks 🟡 decision
 The window manages `/` only. `tmutil deletelocalsnapshots <date>` removes that
@@ -310,5 +335,6 @@ re-checked as root before every `rm`, always permanent delete (the Trash cannot 
 root-owned files), explicit user action only, never watch mode. Time Machine local
 snapshots (the snapshot-purging branch) are the only non-path deletions: one name
 shape (`com.apple.TimeMachine.<date>.local`), three whitelisted `tmutil` verbs, never
-`diskutil apfs deleteSnapshot`, explicit action in the Snapshots window only, always
-permanent, no invented sizes, and the admin prompt only as a fallback.
+`diskutil apfs deleteSnapshot`, explicit action in the Snapshots pane only, always
+permanent, no invented sizes, foreign snapshots named but never touched, and the admin
+prompt only as a fallback.

@@ -21,11 +21,12 @@ to the Trash. See [PLAN.md](PLAN.md) for the design and, critically, the trust m
   space allocated): `LocalSnapshot` (the one name shape allowed), `SnapshotRunner`
   (spawns `/usr/bin/tmutil` directly, unprivileged), `SnapshotTool` (argument
   whitelist, pure list parser, privileged fallback scripts, list/delete/thin),
-  `SnapshotModel` (main-actor state for the Snapshots window).
+  `SnapshotModel` (main-actor state for the Snapshots pane).
 - `RepoMen/Watch` — watched-folders automation: `WatchedFolder` (+`WatchRunRecord`),
   `WatchEngine` (pure eligibility), `WatchManager` (periodic check → trash),
   `WatchNotifier` (notifications).
-- `RepoMen/UI` — SwiftUI views: sidebar, table, settings, empty state, menu bar.
+- `RepoMen/UI` — SwiftUI views: sidebar, table, snapshots pane, settings, empty
+  state, menu bar.
 - `RepoMen/Updates` — reusable GitHub release checker (shared verbatim with the
   sibling apps).
 - `RepoMenTests` — pure-logic + temp-dir integration tests (no UI tests).
@@ -61,11 +62,14 @@ edits needed (except when adding a Swift Package).
     by an amount) and `SnapshotRunner` re-checks it before spawning. Never
     `diskutil apfs deleteSnapshot`, never a name other than
     `com.apple.TimeMachine.<date>.local` (third-party, macOS-update and `.backup`
-    snapshots are never even modelled — `LocalSnapshot` refuses them), never the
-    whole-volume `deletelocalsnapshots /`. Explicit action in the Snapshots window
-    only — never a scan, never watch mode; deletion is always permanent and the
-    dialog says so; the admin prompt is a fallback used only after an unprivileged
-    run was refused. No per-snapshot size is ever shown: macOS exposes none to apps.
+    snapshots are never even modelled — `LocalSnapshot` refuses them; note that
+    `tmutil listlocalsnapshots` lists EVERY snapshot on the volume, so the filter is
+    load-bearing, and foreign names are shown as "left alone", never checkable),
+    never the whole-volume `deletelocalsnapshots /`. Explicit action in the
+    Snapshots pane (sidebar → Time Machine) only — never a scan, never watch mode;
+    deletion is always permanent and the dialog says so; the admin prompt is a
+    fallback used only after an unprivileged run was refused. No per-snapshot size
+    is ever shown: macOS exposes none to apps.
 - **Adding a scan rule**: extend `RuleCatalog.rules` (and `neverDescend` if the name
   is unambiguous) + add `RuleCatalogTests`. A rule must name an anchor or an inner
   anchor unless its directory name is globally unambiguous.

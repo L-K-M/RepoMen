@@ -3,9 +3,11 @@ import Foundation
 /// Runs Apple's `tmutil` (`/usr/bin/tmutil`) directly — no shell, arguments as an
 /// array — as the current user. The local-snapshot verbs are not among those the
 /// tmutil man page marks "Requires root and Full Disk Access privileges", so
-/// listing, deleting and thinning normally cost no password. Should tmutil refuse
-/// for lack of privileges anyway (`Output.looksLikePrivilegeFailure`), `SnapshotTool`
-/// falls back to a single `PrivilegedRunner` prompt.
+/// listing, deleting and thinning cost no password — confirmed on macOS 26, where an
+/// admin user's `tmutil deletelocalsnapshots <date>` succeeds without sudo. Should
+/// tmutil refuse for lack of privileges anyway (`Output.looksLikePrivilegeFailure`,
+/// e.g. a standard account), `SnapshotTool` falls back to a single `PrivilegedRunner`
+/// prompt.
 ///
 /// Only `SnapshotTool` calls this. Every argument list is re-checked against
 /// `SnapshotTool.validate(arguments:)` here, so no future caller can hand tmutil an

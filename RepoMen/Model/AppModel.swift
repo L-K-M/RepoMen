@@ -6,6 +6,9 @@ import Foundation
 enum SidebarEntry: Hashable {
     case all
     case category(ArtifactCategory)
+    /// Time Machine local snapshots — not paths, so the detail pane swaps the
+    /// table for `SnapshotsView` while this is selected.
+    case snapshots
 }
 
 /// Result of a reclaim run, presented as an alert.
@@ -34,6 +37,9 @@ struct ReclaimSummary: Identifiable, Sendable {
     /// when nothing was reclaimed, or when tmutil could not be asked). They hold the
     /// blocks just freed, so the summary explains a flat free-space figure with them.
     let localSnapshots: [LocalSnapshot]
+    /// Snapshots by other apps on the disk at the same moment — they hold freed
+    /// blocks just the same, and RepoMen can only point at them.
+    let otherSnapshotNames: [String]
 }
 
 /// Live position within a running reclaim batch, shown in the footer.
@@ -145,8 +151,13 @@ final class AppModel: ObservableObject {
 
     private func recomputeVisibleItems() {
         var filtered = items
-        if case .category(let category)? = sidebarSelection {
+        switch sidebarSelection {
+        case .category(let category)?:
             filtered = filtered.filter { $0.category == category }
+        case .snapshots?:
+            filtered = []   // the snapshots pane replaces the table entirely
+        default:
+            break
         }
         if !debouncedSearchText.isEmpty {
             filtered = filtered.filter {
@@ -498,8 +509,8 @@ final class AppModel: ObservableObject {
             // Best-effort, unprivileged, near-instant: only when something was freed
             // (a failed batch has nothing for snapshots to hold on to), and any
             // failure simply leaves the hint out.
-            let snapshots = outcomes.contains { $0.failure == nil }
-                ? ((try? await SnapshotTool.list()) ?? []) : []
+            let listing = outcomes.contains { $0.failure == nil }
+                ? ((try? await SnapshotTool.listAll()) ?? .empty) : .empty
             await MainActor.run { [weak self] in
                 AppModel.activeReclaimCount -= 1
                 defer {
@@ -539,7 +550,8 @@ final class AppModel: ObservableObject {
                     freeBytesBefore: freeBefore,
                     freeBytesAfter: Self.volumeFreeBytes(),
                     lifetimeReclaimedBytes: self.preferences.lifetimeReclaimedBytes,
-                    localSnapshots: snapshots)
+                    localSnapshots: listing.snapshots,
+                    otherSnapshotNames: listing.otherNames)
             }
         }
     }

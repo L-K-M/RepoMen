@@ -7,13 +7,18 @@ import SwiftUI
 struct DetailView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var snapshotModel: SnapshotModel
-    @Environment(\.openWindow) private var openWindow
+
+    private var showingSnapshots: Bool { model.sidebarSelection == .snapshots }
 
     var body: some View {
         Group {
-            // A running system scan counts as busy here too: the footer (which
-            // carries its progress line and Stop button) lives on the table branch.
-            if model.items.isEmpty && !model.isBusy && !model.isSystemScanning {
+            if showingSnapshots {
+                // Snapshots are not paths: their own pane replaces the table, its
+                // footer, and the empty state while the sidebar row is selected.
+                SnapshotsView()
+            } else if model.items.isEmpty && !model.isBusy && !model.isSystemScanning {
+                // A running system scan counts as busy here too: the footer (which
+                // carries its progress line and Stop button) lives on the table branch.
                 EmptyStateView()
             } else {
                 VStack(spacing: 0) {
@@ -66,13 +71,13 @@ struct DetailView: View {
             if summary.trashed && summary.reclaimedCount > summary.systemDeleted {
                 Button("Open Trash") { openTrash() }
             }
-            // Time Machine snapshots hold the blocks just freed: offer the window
-            // that releases them, pre-filled with what this reclaim recovered.
-            if !summary.localSnapshots.isEmpty {
-                Button("Snapshots…") {
+            // Snapshots hold the blocks just freed: offer the pane that releases
+            // them, pre-filled with what this reclaim recovered.
+            if !summary.localSnapshots.isEmpty || !summary.otherSnapshotNames.isEmpty {
+                Button("Show Snapshots") {
                     snapshotModel.suggestThin(bytes: summary.freedBytes)
                     model.summary = nil
-                    openWindow(id: "snapshots")
+                    model.sidebarSelection = .snapshots
                 }
             }
             Button("OK") { model.summary = nil }
@@ -122,18 +127,22 @@ struct DetailView: View {
             .help("Find root-owned system logs and caches (like rtcreportingd's RTCReporting logs) — macOS asks for your administrator password")
 
             Button {
-                openWindow(id: "snapshots")
+                model.sidebarSelection = .snapshots
             } label: {
                 Label("Snapshots", systemImage: "clock.arrow.circlepath")
             }
+            .disabled(showingSnapshots)
             .help("Time Machine local snapshots: the space they hold, and how to release it (⌘⇧S)")
 
+            // Reclaim acts on checked table rows; while the snapshots pane is up
+            // that would be invisible and confusing — the pane has its own buttons.
             Button {
                 model.confirmingReclaim = true
             } label: {
                 Label("Reclaim…", systemImage: "trash")
             }
-            .disabled(model.checkedItems.isEmpty || model.isReclaiming || model.isSystemScanning)
+            .disabled(model.checkedItems.isEmpty || model.isReclaiming || model.isSystemScanning
+                      || showingSnapshots)
             .help(model.preferences.moveToTrash
                   ? "Move the checked items to the Trash (⌘⌫)"
                   : "Permanently delete the checked items (⌘⌫)")
@@ -362,8 +371,16 @@ struct DetailView: View {
                 let oldest = snapshots.map(\.date).min() ?? .distantPast
                 text += "\n\nTime Machine holds \(snapshots.count) local snapshot\(snapshots.count == 1 ? "" : "s") of this disk (oldest \(Format.age(oldest))). "
                 text += anyTrashed
-                    ? "Even after you empty the Trash, the freed blocks stay allocated until those snapshots age out (about 24 h) or are deleted — Snapshots… releases them now."
-                    : "The freed blocks stay allocated until those snapshots age out (about 24 h) or are deleted, so free space may not have moved yet — Snapshots… releases them now."
+                    ? "Even after you empty the Trash, the freed blocks stay allocated until those snapshots age out (about 24 h) or are deleted — Show Snapshots releases them now."
+                    : "The freed blocks stay allocated until those snapshots age out (about 24 h) or are deleted, so free space may not have moved yet — Show Snapshots releases them now."
+            }
+            // Other apps' snapshots pin freed blocks just the same; RepoMen can only
+            // name them and point at the app that owns them.
+            let others = summary.otherSnapshotNames
+            if !others.isEmpty {
+                let owners = Set(others.map(SnapshotTool.ownerLabel(forForeignName:)))
+                    .sorted().joined(separator: ", ")
+                text += "\n\n\(others.count) snapshot\(others.count == 1 ? "" : "s") by \(owners) \(others.count == 1 ? "is" : "are") also on this disk and can hold the freed blocks too. RepoMen never touches snapshots made by other apps — manage \(others.count == 1 ? "it" : "them") there or in Disk Utility."
             }
         }
         if summary.cancelled {

@@ -8,16 +8,19 @@ struct SnapshotReport: Identifiable, Sendable {
     let message: String
 }
 
-/// State for the Time Machine Snapshots window: the current list, the checks, and
-/// the two operations (delete checked, ask Time Machine to thin). Like `AppModel`,
-/// UI state lives here on the main actor while tmutil runs off it. Nothing here is
-/// ever triggered by a scan or by watch mode — the window's own buttons are the
-/// only entry points, nothing is pre-checked, and both destructive actions pass a
-/// confirmation dialog that says "permanent" first.
+/// State for the Snapshots pane (sidebar → Time Machine → Local snapshots): the
+/// current list, the checks, and the two operations (delete checked, ask Time
+/// Machine to thin). Like `AppModel`, UI state lives here on the main actor while
+/// tmutil runs off it. Nothing here is ever triggered by a scan or by watch mode —
+/// the pane's own buttons are the only entry points, nothing is pre-checked, and
+/// both destructive actions pass a confirmation dialog that says "permanent" first.
 @MainActor
 final class SnapshotModel: ObservableObject {
 
     @Published private(set) var snapshots: [LocalSnapshot] = []
+    /// Snapshots made by other apps (Arq, Carbon Copy Cloner, macOS updates): shown
+    /// so their space is accounted for, never checkable, never touched.
+    @Published private(set) var otherSnapshotNames: [String] = []
     @Published private(set) var isLoading = false
     /// True while a delete or thin runs (the Stop button's condition).
     @Published private(set) var isWorking = false
@@ -59,9 +62,9 @@ final class SnapshotModel: ObservableObject {
         isLoading = true
         loadError = nil
         loadTask = Task { [weak self] in
-            let result: Result<[LocalSnapshot], Error>
+            let result: Result<SnapshotTool.Listing, Error>
             do {
-                result = .success(try await SnapshotTool.list())
+                result = .success(try await SnapshotTool.listAll())
             } catch {
                 result = .failure(error)
             }
@@ -78,9 +81,10 @@ final class SnapshotModel: ObservableObject {
         }
     }
 
-    private func apply(_ found: [LocalSnapshot]) {
-        snapshots = found
-        checkedIDs = checkedIDs.intersection(found.map(\.id))
+    private func apply(_ listing: SnapshotTool.Listing) {
+        snapshots = listing.snapshots
+        otherSnapshotNames = listing.otherNames
+        checkedIDs = checkedIDs.intersection(listing.snapshots.map(\.id))
     }
 
     /// Pre-fills the release amount from a reclaim (the summary's "Snapshots…"
@@ -128,7 +132,8 @@ final class SnapshotModel: ObservableObject {
             if let remaining {
                 self.apply(remaining)
             } else {
-                self.apply(self.snapshots.filter { !deleted.contains($0) })
+                self.apply(SnapshotTool.Listing(snapshots: self.snapshots.filter { !deleted.contains($0) },
+                                                otherNames: self.otherSnapshotNames))
             }
             var text: String
             if deleted.isEmpty {
@@ -177,7 +182,7 @@ final class SnapshotModel: ObservableObject {
             if let remaining { self.apply(remaining) }
             switch result {
             case .success(let thin):
-                let removed = max(0, before.count - (remaining?.count ?? before.count))
+                let removed = max(0, before.count - (remaining?.snapshots.count ?? before.count))
                 var text: String
                 if removed > 0 {
                     text = "Time Machine removed \(removed) local snapshot\(removed == 1 ? "" : "s") to release about \(Format.bytes(bytes))."
@@ -233,9 +238,9 @@ final class SnapshotModel: ObservableObject {
     /// Re-lists after giving APFS a moment: snapshot removal completes in the
     /// background ("can take several seconds"), so an immediate listing or free-space
     /// sample can still show the old state. nil when the listing failed.
-    private nonisolated static func settleAndList() async -> [LocalSnapshot]? {
+    private nonisolated static func settleAndList() async -> SnapshotTool.Listing? {
         try? await Task.sleep(nanoseconds: 2_000_000_000)
-        return try? await SnapshotTool.list()
+        return try? await SnapshotTool.listAll()
     }
 
     /// Plain free space on the boot volume — deliberately NOT

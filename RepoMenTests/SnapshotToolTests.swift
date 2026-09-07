@@ -38,6 +38,43 @@ final class SnapshotToolTests: XCTestCase {
                        "oldest first, deduplicated, nothing foreign")
     }
 
+    func testParseListingKeepsForeignSnapshotsSeparateAndVerbatim() {
+        // Real output from a Mac with an Arq agent snapshot and no Time Machine ones,
+        // plus a Time Machine snapshot and a Carbon Copy Cloner one for good measure.
+        let listing = SnapshotTool.parseListing("""
+        Snapshots for disk /:
+        com_haystacksoftware_arqagent_E8663CFC-7DA8-4766-BB2F-30B617AD172C_6
+        com.apple.TimeMachine.2026-09-07-101010.local
+        com.bombich.ccc.17F859C6-0BB0-4601-9F64-0A6EFABCA484.2026-09-07-041500
+        com.apple.TimeMachine.2026-09-07-101010.local
+
+        """)
+        XCTAssertEqual(listing.snapshots, [newer], "only Time Machine local snapshots are modelled")
+        XCTAssertEqual(listing.otherNames, [
+            "com_haystacksoftware_arqagent_E8663CFC-7DA8-4766-BB2F-30B617AD172C_6",
+            "com.bombich.ccc.17F859C6-0BB0-4601-9F64-0A6EFABCA484.2026-09-07-041500",
+        ], "the header is not a snapshot; foreign names come back once, in order, untouched")
+    }
+
+    func testOwnerLabelsForForeignSnapshots() {
+        XCTAssertEqual(SnapshotTool.ownerLabel(forForeignName: "com_haystacksoftware_arqagent_E8663CFC_6"), "Arq")
+        XCTAssertEqual(SnapshotTool.ownerLabel(forForeignName: "com.bombich.ccc.17F859C6.2026-09-07-041500"), "Carbon Copy Cloner")
+        XCTAssertEqual(SnapshotTool.ownerLabel(forForeignName: "com.apple.os.update-6E8F2A1B"), "a macOS update")
+        XCTAssertEqual(SnapshotTool.ownerLabel(forForeignName: "com.apple.TimeMachine.2026-09-07-101010.backup"),
+                       "Time Machine (not a local snapshot)")
+        XCTAssertEqual(SnapshotTool.ownerLabel(forForeignName: "com.apple.somethingelse"), "macOS")
+        XCTAssertEqual(SnapshotTool.ownerLabel(forForeignName: "org.example.snap"), "another app")
+    }
+
+    func testListAllReportsForeignSnapshotsWhileListStaysTimeMachineOnly() async throws {
+        let stdout = "Snapshots for disk /:\ncom_haystacksoftware_arqagent_E8663CFC_6\n"
+        let listing = try await SnapshotTool.listAll(runner: { _, _ in self.output(0, stdout: stdout) })
+        XCTAssertTrue(listing.snapshots.isEmpty)
+        XCTAssertEqual(listing.otherNames, ["com_haystacksoftware_arqagent_E8663CFC_6"])
+        let onlyTimeMachine = try await SnapshotTool.list(runner: { _, _ in self.output(0, stdout: stdout) })
+        XCTAssertTrue(onlyTimeMachine.isEmpty, "a foreign snapshot must never become deletable")
+    }
+
     func testParseListOfEmptyOutputIsEmpty() {
         XCTAssertTrue(SnapshotTool.parseList("").isEmpty)
         XCTAssertTrue(SnapshotTool.parseList("Snapshots for disk /:\n").isEmpty)
