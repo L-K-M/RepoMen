@@ -7,26 +7,19 @@ import SwiftUI
 /// is no size column: macOS gives no per-snapshot size to anything but Disk Utility
 /// (its Private Size column), so the pane says so and offers to open Disk Utility
 /// rather than guess.
+///
+/// Layout note: the rows are a plain `ScrollView`, not a `Table`. Two `Table`-based
+/// versions of this pane laid out as one giant table that swallowed the header, the
+/// footer and the sidebar; a scroll view can never claim more than it is given, and
+/// every text here has a line limit, so nothing can report an unbounded height.
 struct SnapshotsView: View {
     @EnvironmentObject private var model: SnapshotModel
 
     var body: some View {
-        // Same skeleton as DetailView's table branch — fixed bars above and below a
-        // table that takes whatever is left. A Table inside a padded VStack of texts
-        // and controls did not size itself here: it swallowed the whole pane and
-        // pushed the bars (and the sidebar's layout) out of view.
         VStack(spacing: 0) {
             header
             Divider()
-            ZStack {
-                table
-                if model.rows.isEmpty && model.hasLoaded && !model.isLoading {
-                    Text("No snapshots on this disk right now — nothing is holding freed space.")
-                        .foregroundStyle(.secondary)
-                        .allowsHitTesting(false)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            rowsList
             Divider()
             footer
         }
@@ -83,64 +76,74 @@ struct SnapshotsView: View {
             """)
             .font(.callout)
             .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+            .lineLimit(4)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
     }
 
-    // MARK: Table
+    // MARK: Rows
 
-    private var table: some View {
-        Table(model.rows) {
-            TableColumn("") { (row: SnapshotRow) in
-                if let snapshot = row.snapshot {
-                    Toggle("", isOn: Binding(
-                        get: { model.checkedIDs.contains(snapshot.id) },
-                        set: { model.setChecked($0, id: snapshot.id) }))
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
-                    .accessibilityLabel("Delete snapshot from \(created(snapshot))")
+    private var rowsList: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                if model.rows.isEmpty {
+                    Text(model.hasLoaded && !model.isLoading
+                         ? "No snapshots on this disk right now — nothing is holding freed space."
+                         : "Listing snapshots…")
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 40)
                 } else {
-                    Image(systemName: "hand.raised")
-                        .foregroundStyle(.tertiary)
-                        .help("Made by \(row.owner) — RepoMen never touches it")
+                    ForEach(model.rows) { row in
+                        rowView(row)
+                        Divider()
+                    }
                 }
             }
-            .width(24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 
-            TableColumn("Snapshot") { (row: SnapshotRow) in
+    /// One snapshot: checkbox + name + a caption line, or — for another app's
+    /// snapshot — a hand icon, the name greyed with a "left alone" badge, and who made it.
+    private func rowView(_ row: SnapshotRow) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            if let snapshot = row.snapshot {
+                Toggle("", isOn: Binding(
+                    get: { model.checkedIDs.contains(snapshot.id) },
+                    set: { model.setChecked($0, id: snapshot.id) }))
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .accessibilityLabel("Delete snapshot from \(created(snapshot))")
+            } else {
+                Image(systemName: "hand.raised")
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 16)
+                    .help("Made by \(row.owner) — RepoMen never touches it")
+            }
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(row.name)
                         .font(.system(.body, design: .monospaced))
                         .lineLimit(1)
                         .truncationMode(.middle)
-                        .foregroundStyle(row.isTimeMachine ? .primary : .secondary)
-                        .layoutPriority(1)
                     if !row.isTimeMachine {
                         badge("left alone")
                     }
                 }
-            }
-
-            TableColumn("Made by") { (row: SnapshotRow) in
-                Text(row.owner)
-                    .foregroundStyle(row.isTimeMachine ? .primary : .secondary)
-            }
-            .width(min: 100, ideal: 150, max: 220)
-
-            TableColumn("Created") { (row: SnapshotRow) in
-                Text(row.snapshot.map(created) ?? "—")
-                    .foregroundStyle(row.isTimeMachine ? .primary : .secondary)
-            }
-            .width(min: 150, ideal: 180, max: 220)
-
-            TableColumn("Age") { (row: SnapshotRow) in
-                Text(row.snapshot.map { Format.age($0.date) } ?? "—")
+                Text(row.snapshot.map { "Time Machine · created \(created($0)) · \(Format.age($0.date))" }
+                     ?? "Made by \(row.owner) — not managed by RepoMen; see that app or Disk Utility")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-            .width(min: 80, ideal: 100, max: 130)
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .opacity(row.isTimeMachine ? 1 : 0.7)
     }
 
     private func badge(_ text: String) -> some View {
@@ -161,7 +164,7 @@ struct SnapshotsView: View {
                 Text("Snapshots made by other apps are listed for completeness — they can hold freed blocks too. RepoMen never deletes them; manage them in that app or in Disk Utility.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             Divider()
@@ -224,7 +227,7 @@ struct SnapshotsView: View {
                 """)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(3)
                 .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 8) {
                 TextField("GB", value: $model.thinGigabytes,
@@ -258,7 +261,7 @@ struct SnapshotsView: View {
                 """)
                 .font(.caption)
                 .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button("Open Disk Utility") { SnapshotModel.openDiskUtility() }
                 .controlSize(.small)
