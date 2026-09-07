@@ -242,25 +242,29 @@ and Howard Oakley's [24 Aug](https://eclecticlight.co/2026/08/24/arent-snapshots
 [27 Aug](https://eclecticlight.co/2026/08/27/why-can-purging-snapshots-fail/) and
 [2 Sep 2026](https://eclecticlight.co/2026/09/02/caches-and-purging-in-macos-tahoe/) articles.
 
-### Z1 — Verify the no-password path on a real Mac 🔴 S (verify first)
+### Z1 — No-password path ✅ verified on a real Mac (7 Sep 2026)
 The tmutil man page marks specific verbs "Requires root and Full Disk Access
-privileges" and none of the local-snapshot verbs carry the tag; Oakley's tmutil guide
-and two Apple Developer Forums posts show `tmutil deletelocalsnapshots <date>`
-succeeding without `sudo`. Nothing on this branch was run on a Mac (no local toolchain;
-CI on `macos-14` runners is intermittent — Y3). Run `tmutil listlocalsnapshots /` and
-`tmutil deletelocalsnapshots <date>` from Terminal as an admin, then from the app. If
-they need root after all, the `PrivilegedRunner` fallback in `SnapshotTool` kicks in
-automatically (one prompt per batch) — decide then whether to keep the unprivileged
-attempt or go straight to the prompt. Also confirm the exact refusal wording so
-`SnapshotRunner.Output.privilegeMarkers` matches it.
-Field note (7 Sep 2026): on a Mac with an Arq agent snapshot and no Time Machine
-local snapshots, `tmutil listlocalsnapshots /` printed the header plus the Arq name,
-and `tmutil deletelocalsnapshots 2026-08-01` (a bare date, not the required
-`YYYY-MM-DD-HHMMSS` token) failed with "2026-08-01 is not a valid disk /
-POSIXError … Code=22 Invalid argument" — tmutil treated it as a mount point, so the
-privilege question is still open. To test properly: `tmutil localsnapshot` (needs
-Time Machine configured) prints the new token; then
-`tmutil deletelocalsnapshots <that token>` without `sudo`.
+privileges" and none of the local-snapshot verbs carry the tag. Confirmed in Terminal
+as an admin user, no `sudo`, on the maintainer's Mac:
+
+```
+% tmutil localsnapshot
+NOTE: local snapshots are considered purgeable and may be removed at any time by deleted(8).
+Created local snapshot with date: 2026-09-07-152743
+% tmutil deletelocalsnapshots 2026-09-07-152743
+Deleted local snapshot '2026-09-07-152743'
+```
+
+So the app's first attempt (unprivileged `SnapshotRunner`) is the normal path. The
+`PrivilegedRunner` fallback stays: it costs nothing unless tmutil's refusal mentions
+privileges (`SnapshotRunner.Output.privilegeMarkers`), and standard (non-admin)
+accounts have not been tested. Two field notes from the same session: a bare
+`YYYY-MM-DD` operand is read as a mount point ("2026-08-01 is not a valid disk /
+POSIXError … Code=22"), which is why RepoMen only ever passes the full 17-character
+token; and `tmutil localsnapshot`'s stderr NOTE is Apple's own statement that these
+snapshots are purgeable. Still to confirm from the app itself (not Terminal): the
+same delete through `SnapshotRunner` — TCC treats the app, not Terminal, as the
+responsible process, though no local-snapshot verb is Full-Disk-Access-gated.
 
 ### Z2 — Per-snapshot sizes 🟠 blocked on Apple
 Disk Utility shows Private Size / Cumulative Size (Oakley, [Understanding snapshot

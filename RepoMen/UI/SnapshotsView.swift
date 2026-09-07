@@ -269,7 +269,7 @@ struct SnapshotsView: View {
         }
         lines.append("Deleting by date removes that date's Time Machine snapshot on every mounted disk it exists on, not just this one.")
         lines.append("Files can no longer be restored from these snapshots while your backup disk is away. If one is the snapshot of your last backup, the next backup may take longer. Your backup disk itself is untouched.")
-        lines.append("Snapshots cannot go to the Trash — this cannot be undone. macOS may ask for your administrator password.")
+        lines.append("Snapshots cannot go to the Trash — this cannot be undone. No password is normally needed; if macOS insists on administrator privileges, RepoMen asks once.")
         return lines.joined(separator: "\n")
     }
 
@@ -283,7 +283,7 @@ struct SnapshotsView: View {
         \(Format.bytes(model.thinBytes)) is free, at urgency \(model.thinUrgency). It may \
         remove fewer snapshots than that needs — or none, if it judges the space unnecessary. \
         Removed snapshots cannot be restored. Snapshots made by other apps are never touched. \
-        macOS may ask for your administrator password.
+        No password is normally needed; if macOS insists on administrator privileges, RepoMen asks once.
         """
     }
 }

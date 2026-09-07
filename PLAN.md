@@ -168,8 +168,10 @@ The trust model, applied to things that are not paths:
   disk itself is untouched.
 - **No password unless needed.** The local-snapshot verbs are not among those the
   tmutil man page marks "Requires root and Full Disk Access", so RepoMen runs them as
-  the user. Only if tmutil refuses for lack of privileges does it fall back to one
-  administrator prompt (`PrivilegedRunner`, a whitelisted tmutil line).
+  the user — confirmed on macOS 26: an admin user creates and deletes a local
+  snapshot in Terminal without `sudo`. Only if tmutil refuses for lack of privileges
+  does it fall back to one administrator prompt (`PrivilegedRunner`, a whitelisted
+  tmutil line).
 - **No invented sizes.** macOS exposes no per-snapshot size to apps — Disk Utility's
   Private Size column comes from private API — so the pane shows none, says so,
   and offers to open Disk Utility. What it does report honestly is the boot volume's
