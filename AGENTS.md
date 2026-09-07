@@ -21,6 +21,7 @@ to the Trash. See [PLAN.md](PLAN.md) for the design and, critically, the trust m
   space allocated): `LocalSnapshot` (the one name shape allowed), `SnapshotRunner`
   (spawns `/usr/bin/tmutil` directly, unprivileged), `SnapshotTool` (argument
   whitelist, pure list parser, privileged fallback scripts, list/delete/thin),
+  `SnapshotRow` (table row: a Time Machine snapshot, or a foreign one shown greyed),
   `SnapshotModel` (main-actor state for the Snapshots pane).
 - `RepoMen/Watch` — watched-folders automation: `WatchedFolder` (+`WatchRunRecord`),
   `WatchEngine` (pure eligibility), `WatchManager` (periodic check → trash),

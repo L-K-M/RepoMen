@@ -1,28 +1,35 @@
 import SwiftUI
 
-/// The Snapshots pane (sidebar → Time Machine → Local snapshots): lists the boot
-/// volume's Time Machine local snapshots, deletes the checked ones, or asks Time
-/// Machine to thin by an amount. Both actions pass a confirmation dialog that says
-/// "permanent". There is no size column: macOS gives no per-snapshot size to
-/// anything but Disk Utility (its Private Size column), so the pane says so and
-/// offers to open Disk Utility rather than guess. Snapshots made by other apps are
-/// named as "left alone" — they hold freed blocks too — and never offered.
+/// The Snapshots pane (sidebar → Time Machine → Local snapshots): lists every
+/// snapshot on the boot volume — Time Machine's as checkable rows, other apps' greyed
+/// and marked "left alone" — deletes the checked ones, or asks Time Machine to thin
+/// by an amount. Both actions pass a confirmation dialog that says "permanent". There
+/// is no size column: macOS gives no per-snapshot size to anything but Disk Utility
+/// (its Private Size column), so the pane says so and offers to open Disk Utility
+/// rather than guess.
 struct SnapshotsView: View {
     @EnvironmentObject private var model: SnapshotModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            explanation
-            table
-            controls
-            if !model.otherSnapshotNames.isEmpty {
-                otherSnapshotsNote
-            }
+        // Same skeleton as DetailView's table branch — fixed bars above and below a
+        // table that takes whatever is left. A Table inside a padded VStack of texts
+        // and controls did not size itself here: it swallowed the whole pane and
+        // pushed the bars (and the sidebar's layout) out of view.
+        VStack(spacing: 0) {
+            header
             Divider()
-            releaseSection
-            footnote
+            ZStack {
+                table
+                if model.rows.isEmpty && model.hasLoaded && !model.isLoading {
+                    Text("No snapshots on this disk right now — nothing is holding freed space.")
+                        .foregroundStyle(.secondary)
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Divider()
+            footer
         }
-        .padding(16)
         .onAppear {
             if !model.isWorking { model.refresh() }
         }
@@ -63,59 +70,106 @@ struct SnapshotsView: View {
         }
     }
 
-    // MARK: Sections
+    // MARK: Header
 
-    private var explanation: some View {
+    private var header: some View {
         Text("""
             Time Machine keeps hourly local snapshots of this disk for about 24 hours. \
             Files you delete stay allocated until every snapshot that references them \
             is gone — so free space can stay flat after emptying the Trash, and macOS \
-            purges snapshots on its own only unreliably. Only Time Machine's local \
-            snapshots can be deleted here; snapshots made by other apps are noted below \
-            and never touched.
+            purges snapshots on its own only unreliably. Only Time Machine's snapshots \
+            can be deleted here; snapshots made by other apps are listed greyed and \
+            never touched.
             """)
             .font(.callout)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
     }
 
+    // MARK: Table
+
     private var table: some View {
-        Table(model.snapshots) {
-            TableColumn("") { (snapshot: LocalSnapshot) in
-                Toggle("", isOn: Binding(
-                    get: { model.checkedIDs.contains(snapshot.id) },
-                    set: { model.setChecked($0, id: snapshot.id) }))
-                .toggleStyle(.checkbox)
-                .labelsHidden()
-                .accessibilityLabel("Delete snapshot from \(created(snapshot))")
+        Table(model.rows) {
+            TableColumn("") { (row: SnapshotRow) in
+                if let snapshot = row.snapshot {
+                    Toggle("", isOn: Binding(
+                        get: { model.checkedIDs.contains(snapshot.id) },
+                        set: { model.setChecked($0, id: snapshot.id) }))
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+                    .accessibilityLabel("Delete snapshot from \(created(snapshot))")
+                } else {
+                    Image(systemName: "hand.raised")
+                        .foregroundStyle(.tertiary)
+                        .help("Made by \(row.owner) — RepoMen never touches it")
+                }
             }
             .width(24)
 
-            TableColumn("Snapshot") { (snapshot: LocalSnapshot) in
-                Text(snapshot.name)
-                    .font(.system(.body, design: .monospaced))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+            TableColumn("Snapshot") { (row: SnapshotRow) in
+                HStack(spacing: 6) {
+                    Text(row.name)
+                        .font(.system(.body, design: .monospaced))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .foregroundStyle(row.isTimeMachine ? .primary : .secondary)
+                        .layoutPriority(1)
+                    if !row.isTimeMachine {
+                        badge("left alone")
+                    }
+                }
             }
 
-            TableColumn("Created") { (snapshot: LocalSnapshot) in
-                Text(created(snapshot))
+            TableColumn("Made by") { (row: SnapshotRow) in
+                Text(row.owner)
+                    .foregroundStyle(row.isTimeMachine ? .primary : .secondary)
+            }
+            .width(min: 100, ideal: 150, max: 220)
+
+            TableColumn("Created") { (row: SnapshotRow) in
+                Text(row.snapshot.map(created) ?? "—")
+                    .foregroundStyle(row.isTimeMachine ? .primary : .secondary)
             }
             .width(min: 150, ideal: 180, max: 220)
 
-            TableColumn("Age") { (snapshot: LocalSnapshot) in
-                Text(Format.age(snapshot.date))
+            TableColumn("Age") { (row: SnapshotRow) in
+                Text(row.snapshot.map { Format.age($0.date) } ?? "—")
                     .foregroundStyle(.secondary)
             }
             .width(min: 80, ideal: 100, max: 130)
         }
-        .overlay {
-            if model.snapshots.isEmpty && model.hasLoaded && !model.isLoading {
-                Text("No Time Machine local snapshots on this disk right now.")
+    }
+
+    private func badge(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(Color.secondary.opacity(0.16), in: Capsule())
+            .foregroundStyle(.secondary)
+    }
+
+    // MARK: Footer
+
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            controls
+            if !model.otherSnapshotNames.isEmpty {
+                Text("Snapshots made by other apps are listed for completeness — they can hold freed blocks too. RepoMen never deletes them; manage them in that app or in Disk Utility.")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                    .allowsHitTesting(false)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+            Divider()
+            releaseSection
+            footnote
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     private var controls: some View {
@@ -146,6 +200,7 @@ struct SnapshotsView: View {
 
             Button("Check All") { model.checkAll() }
                 .disabled(model.snapshots.isEmpty || model.isWorking)
+                .help("Checks every Time Machine snapshot — other apps' rows cannot be checked")
             Button("Uncheck All") { model.clearChecked() }
                 .disabled(model.checkedIDs.isEmpty)
             Button(role: .destructive) {
@@ -155,36 +210,6 @@ struct SnapshotsView: View {
             }
             .disabled(model.checkedSnapshots.isEmpty || model.isWorking || model.isLoading)
             .help("Permanently delete the checked snapshots — macOS cannot undo this")
-        }
-    }
-
-    /// tmutil lists every snapshot on the volume, not just Time Machine's. Naming
-    /// the others keeps "no snapshots" from reading as "nothing holds your space",
-    /// and points at who does manage them.
-    private var otherSnapshotsNote: some View {
-        let names = model.otherSnapshotNames
-        let owners = Set(names.map(SnapshotTool.ownerLabel(forForeignName:)))
-            .sorted().joined(separator: ", ")
-        return VStack(alignment: .leading, spacing: 3) {
-            Label {
-                Text("Also on this disk, left alone: \(names.count) snapshot\(names.count == 1 ? "" : "s") by \(owners). \(names.count == 1 ? "It" : "They") can hold freed blocks too — manage \(names.count == 1 ? "it" : "them") in that app or in Disk Utility.")
-            } icon: {
-                Image(systemName: "hand.raised")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            ForEach(names.prefix(3), id: \.self) { name in
-                Text(name)
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            if names.count > 3 {
-                Text("…and \(names.count - 3) more")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
         }
     }
 
@@ -200,6 +225,7 @@ struct SnapshotsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 8) {
                 TextField("GB", value: $model.thinGigabytes,
                           format: .number.precision(.fractionLength(0...1)))
@@ -233,7 +259,7 @@ struct SnapshotsView: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
-            Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
             Button("Open Disk Utility") { SnapshotModel.openDiskUtility() }
                 .controlSize(.small)
         }
