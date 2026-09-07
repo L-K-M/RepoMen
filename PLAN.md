@@ -122,12 +122,63 @@ unreadable to the app, detection and deletion run as root through one AppleScrip
   warning: the logs regrow immediately, and files the daemon holds open free no
   space until it lets go.
 
+### Time Machine local snapshots (why freed space doesn't come back)
+
+On a Mac with Time Machine on, deleting 30 GB of `target/` and emptying the Trash can
+leave free space exactly where it was: Time Machine takes a local APFS snapshot of the
+boot volume about every hour and keeps it for ~24 h, and every block a snapshot
+references stays allocated until that snapshot is gone. macOS calls the space
+purgeable and is supposed to purge it on demand, but Howard Oakley's tests show the
+`deleted` daemon's Time Machine plug-in reporting 0 bytes purgeable for half an hour
+or failing outright ([Why can purging snapshots fail?](https://eclecticlight.co/2026/08/27/why-can-purging-snapshots-fail/)).
+His advice — delete the snapshots yourself — is what RepoMen offers, three ways:
+
+- **The summary says so.** After a reclaim that freed anything, RepoMen lists the
+  local snapshots (`tmutil listlocalsnapshots /`, unprivileged, instant) and, if any
+  exist, the summary explains that the freed blocks stay allocated until they age
+  out or are deleted, with a **Snapshots…** button pre-filled with the amount.
+- **Release space.** The Snapshots window asks Time Machine to thin its own
+  snapshots by an amount (`tmutil thinlocalsnapshots / <bytes> <urgency>`) — Apple's
+  supported hook for the purge macOS should do by itself. Time Machine picks what
+  goes, oldest first, and may decide nothing has to.
+- **Delete specific snapshots.** The window lists Time Machine's local snapshots
+  (name, creation time, age), nothing pre-checked; checked ones are deleted one by
+  one with `tmutil deletelocalsnapshots <date>`.
+
+The trust model, applied to things that are not paths:
+
+- **One name shape, three verbs.** `LocalSnapshot` accepts only
+  `com.apple.TimeMachine.<date>.local`; Carbon Copy Cloner's snapshots, the ones
+  macOS takes before updates, and Time Machine's `.backup` snapshots on backup disks
+  cannot be represented, so they cannot be deleted. `SnapshotTool.validate` whitelists
+  exactly three `tmutil` invocations (list the boot volume, delete one validated date,
+  thin the boot volume), and `SnapshotRunner` re-checks before spawning. RepoMen never
+  calls `diskutil apfs deleteSnapshot`, which could reach any snapshot.
+- **Explicit, permanent, said out loud.** Snapshots never ride along with a scan or
+  a reclaim and watch mode never touches them. Both actions pass a confirmation
+  dialog that says the deletion is permanent, that deleting by date removes that
+  date's Time Machine snapshot on every mounted disk, that files can no longer be
+  restored from those snapshots while the backup disk is away, and that the backup
+  disk itself is untouched.
+- **No password unless needed.** The local-snapshot verbs are not among those the
+  tmutil man page marks "Requires root and Full Disk Access", so RepoMen runs them as
+  the user. Only if tmutil refuses for lack of privileges does it fall back to one
+  administrator prompt (`PrivilegedRunner`, a whitelisted tmutil line).
+- **No invented sizes.** macOS exposes no per-snapshot size to apps — Disk Utility's
+  Private Size column comes from private API — so the window shows none, says so,
+  and offers to open Disk Utility. What it does report honestly is the boot volume's
+  plain free space before and after (not `volumeAvailableCapacityForImportantUsage`,
+  which already counts purgeable space and lags).
+
 ## App shape
 
 Regular windowed SwiftUI app (unlike sibling Gans, which is a menu-bar agent):
 `NavigationSplitView` with a category sidebar (All / Projects / Developer caches /
 Package managers / Browsers, with per-category totals) and a sortable `Table`
-(checkbox, item, size, last used). Toolbar: Scan + Reclaim. Footer: totals + quick
+(checkbox, item, size, last used). Toolbar: Scan + System Scan + Snapshots + Reclaim.
+Time Machine snapshots get their own window rather than rows in the table: a
+snapshot has no path, no measurable size and no Trash, so every row affordance
+(Reveal, Exclude, sizing, watch) would be a lie. Footer: totals + quick
 selection. Settings (⌘,): scan folders, rule toggles per kind, Trash vs. delete,
 updates. `Updates/` is the GitHub-release checker shared verbatim with the sibling
 apps (Gans et al.), pointed at `L-K-M/RepoMen`.

@@ -30,6 +30,10 @@ struct ReclaimSummary: Identifiable, Sendable {
     let freeBytesAfter: Int64?
     /// The all-time tally including this run.
     let lifetimeReclaimedBytes: Int64
+    /// Time Machine local snapshots present right after the run (empty when none,
+    /// when nothing was reclaimed, or when tmutil could not be asked). They hold the
+    /// blocks just freed, so the summary explains a flat free-space figure with them.
+    let localSnapshots: [LocalSnapshot]
 }
 
 /// Live position within a running reclaim batch, shown in the footer.
@@ -491,6 +495,11 @@ final class AppModel: ObservableObject {
                 }
             }
             let cancelled = Task.isCancelled
+            // Best-effort, unprivileged, near-instant: only when something was freed
+            // (a failed batch has nothing for snapshots to hold on to), and any
+            // failure simply leaves the hint out.
+            let snapshots = outcomes.contains { $0.failure == nil }
+                ? ((try? await SnapshotTool.list()) ?? []) : []
             await MainActor.run { [weak self] in
                 AppModel.activeReclaimCount -= 1
                 defer {
@@ -529,7 +538,8 @@ final class AppModel: ObservableObject {
                     cancelled: cancelled,
                     freeBytesBefore: freeBefore,
                     freeBytesAfter: Self.volumeFreeBytes(),
-                    lifetimeReclaimedBytes: self.preferences.lifetimeReclaimedBytes)
+                    lifetimeReclaimedBytes: self.preferences.lifetimeReclaimedBytes,
+                    localSnapshots: snapshots)
             }
         }
     }

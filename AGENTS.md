@@ -17,6 +17,11 @@ to the Trash. See [PLAN.md](PLAN.md) for the design and, critically, the trust m
   `SystemAreas` (fixed catalog + its own validate), `PrivilegedRunner` (osascript
   admin bridge + quoting/escaping), `SystemScanner` (probe + pure parser),
   `SystemReclaimer` (privileged, permanent delete).
+- `RepoMen/Snapshots` — Time Machine local snapshots (the blocks that keep "freed"
+  space allocated): `LocalSnapshot` (the one name shape allowed), `SnapshotRunner`
+  (spawns `/usr/bin/tmutil` directly, unprivileged), `SnapshotTool` (argument
+  whitelist, pure list parser, privileged fallback scripts, list/delete/thin),
+  `SnapshotModel` (main-actor state for the Snapshots window).
 - `RepoMen/Watch` — watched-folders automation: `WatchedFolder` (+`WatchRunRecord`),
   `WatchEngine` (pure eligibility), `WatchManager` (periodic check → trash),
   `WatchNotifier` (notifications).
@@ -50,6 +55,17 @@ edits needed (except when adding a Swift Package).
     mode never touches them. Never widen the catalog beyond locations that are
     disposable by macOS contract, and never route system items through `Reclaimer`
     (it refuses them) or normal items through `SystemReclaimer` (same).
+  - Time Machine local snapshots are the only non-path things RepoMen deletes, and
+    only through `tmutil`'s local-snapshot verbs: `SnapshotTool.validate` is the
+    whitelist (list the boot volume; delete ONE validated date; thin the boot volume
+    by an amount) and `SnapshotRunner` re-checks it before spawning. Never
+    `diskutil apfs deleteSnapshot`, never a name other than
+    `com.apple.TimeMachine.<date>.local` (third-party, macOS-update and `.backup`
+    snapshots are never even modelled — `LocalSnapshot` refuses them), never the
+    whole-volume `deletelocalsnapshots /`. Explicit action in the Snapshots window
+    only — never a scan, never watch mode; deletion is always permanent and the
+    dialog says so; the admin prompt is a fallback used only after an unprivileged
+    run was refused. No per-snapshot size is ever shown: macOS exposes none to apps.
 - **Adding a scan rule**: extend `RuleCatalog.rules` (and `neverDescend` if the name
   is unambiguous) + add `RuleCatalogTests`. A rule must name an anchor or an inner
   anchor unless its directory name is globally unambiguous.
@@ -69,5 +85,7 @@ edits needed (except when adding a Swift Package).
 
 Unit-test pure logic and the temp-dir integration paths (`Scanner`, `KnownCaches`,
 `Reclaimer` — the latter uses `.delete` against a synthetic home so the real Trash
-stays clean). The live UI, TCC prompts, and trashing real artifacts are manual-verify
-items.
+stays clean). `SnapshotTool` and the `System*` types take injected runner closures, so
+their tests never spawn `tmutil` or `osascript`. The live UI, TCC prompts, the
+password dialog, and trashing real artifacts or deleting real snapshots are
+manual-verify items.

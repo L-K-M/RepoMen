@@ -6,6 +6,8 @@ import SwiftUI
 /// confirmation dialog — there is no one-click path to deletion.
 struct DetailView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var snapshotModel: SnapshotModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Group {
@@ -64,6 +66,15 @@ struct DetailView: View {
             if summary.trashed && summary.reclaimedCount > summary.systemDeleted {
                 Button("Open Trash") { openTrash() }
             }
+            // Time Machine snapshots hold the blocks just freed: offer the window
+            // that releases them, pre-filled with what this reclaim recovered.
+            if !summary.localSnapshots.isEmpty {
+                Button("Snapshots…") {
+                    snapshotModel.suggestThin(bytes: summary.freedBytes)
+                    model.summary = nil
+                    openWindow(id: "snapshots")
+                }
+            }
             Button("OK") { model.summary = nil }
         } message: { summary in
             Text(summaryText(summary))
@@ -109,6 +120,13 @@ struct DetailView: View {
             }
             .disabled(model.isBusy || model.isReclaiming || model.isSystemScanning)
             .help("Find root-owned system logs and caches (like rtcreportingd's RTCReporting logs) — macOS asks for your administrator password")
+
+            Button {
+                openWindow(id: "snapshots")
+            } label: {
+                Label("Snapshots", systemImage: "clock.arrow.circlepath")
+            }
+            .help("Time Machine local snapshots: the space they hold, and how to release it (⌘⇧S)")
 
             Button {
                 model.confirmingReclaim = true
@@ -335,6 +353,17 @@ struct DetailView: View {
             }
             if summary.lifetimeReclaimedBytes > summary.freedBytes {
                 text += "\nLifetime total: \(Format.bytes(summary.lifetimeReclaimedBytes)) repossessed."
+            }
+            // The blocks just freed stay allocated while a Time Machine local
+            // snapshot references them — the reason "Disk free" can refuse to move.
+            // Say so rather than let the user conclude the reclaim did nothing.
+            let snapshots = summary.localSnapshots
+            if !snapshots.isEmpty {
+                let oldest = snapshots.map(\.date).min() ?? .distantPast
+                text += "\n\nTime Machine holds \(snapshots.count) local snapshot\(snapshots.count == 1 ? "" : "s") of this disk (oldest \(Format.age(oldest))). "
+                text += anyTrashed
+                    ? "Even after you empty the Trash, the freed blocks stay allocated until those snapshots age out (about 24 h) or are deleted — Snapshots… releases them now."
+                    : "The freed blocks stay allocated until those snapshots age out (about 24 h) or are deleted, so free space may not have moved yet — Snapshots… releases them now."
             }
         }
         if summary.cancelled {

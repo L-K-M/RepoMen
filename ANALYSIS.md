@@ -43,17 +43,19 @@ on merge, keep both changes. #2 composes with #1's model-side scan/reclaim exclu
 | [#18](https://github.com/L-K-M/RepoMen/pull/18) | `k3/launch-at-login` | "Open at Login" toggle via SMAppService (no UserDefaults mirror); watch lifecycle copy clarified |
 | [#19](https://github.com/L-K-M/RepoMen/pull/19) | `k3/settings-and-login-toggle-fixes` | search filter stuck on "" (debounce `assign(to:)`), frozen login-toggle checkbox (now persisted pref), dead menu-bar Settings item (SettingsLink) |
 | [#20](https://github.com/L-K-M/RepoMen/pull/20) | `claude/rtcreporting-logs-cleanup-rr0ffs` | System areas: admin-gated scan + privileged cleanup of root-owned RTCReporting logs and caches (new Y1-Y3 follow-ups) |
+| (this branch) | `claude/repomen-snapshot-purging-adhb9o` | Time Machine local snapshots: post-reclaim hint, "release space" via `tmutil thinlocalsnapshots`, Snapshots window with per-snapshot delete (new Z1-Z5 follow-ups) |
 
-> **⚠ No Actions job runs in this repository — on any runner.** Every job —
-> including the original `main` commit `a7190a7`, before any review changes —
-> "fails" within ~2-5 seconds with no runner assigned and no logs. PR #20 ruled out
-> the earlier macOS-billing theory: the **GLM 5.2 review** workflow fails the same
-> way (~3 s, log download HTTP 404) and it runs on `ubuntu-latest`. So Actions is not
-> assigning runners for this private repo at all, whatever the OS — see Y3. Until
-> that is resolved in the account settings, nothing here has been machine-verified:
-> claude's #1–#9, k3's #12–#19 and #20 were written without a local Xcode toolchain
-> and reviewed by hand only, and no automated reviewer has ever commented. Run the
-> suite locally (`xcodebuild … clean test`) before trusting any of it.
+> **⚠ CI history.** Until early September 2026 no Actions job ran here at all: every
+> job "failed" within seconds with no runner and no logs (see Y3 for the record).
+> Since then runners are assigned again — CI run #70 on `main` (2 Sep 2026) built the
+> app and executed all 111 tests — but some runs still die in ~8 s with no logs (run
+> #71 and #72 attempt 1 on 7 Sep), so treat a log-less failure as "no runner", not as a
+> broken build. That first real run also showed `main` red: 4 tests (6 assertions) in
+> `ScannerTests`/`KnownCachesTests` compared fixture paths under the unresolved
+> `/var/folders/…` temp dir against the canonical `/private/var/…` paths the scanner
+> and catalog report. The snapshot-purging branch resolves the fixture roots. Before
+> that, nothing here had been machine-verified: claude's #1–#9, k3's #12–#19 and #20
+> were written without a local Xcode toolchain and reviewed by hand only.
 
 ---
 
@@ -219,14 +221,62 @@ survive a normal rescan, so only another System Scan refreshes them); re-reclaim
 reports `GONE`, which is harmless. Options: emit per-path verdicts incrementally, or
 drop rows the next probe no longer sees. Low priority — the window is one brief click.
 
-### Y3 — Automated review is unavailable in this repo 🟠 infrastructure
-PR #20 confirmed the CI diagnosis is broader than ANALYSIS assumed: the **GLM 5.2
-review** workflow also fails in ~3 seconds with **no logs (HTTP 404)** — and it runs on
-`ubuntu-latest`, not macOS. So this is not the "macOS runners bill at 10x" theory; GitHub
-Actions is not assigning runners for this private repo at all, on any OS. Until Actions
-billing/spending is resolved in the account settings, *neither* the build/test job *nor*
-the automated reviewer can run, and every PR merges on hand review only. That is the
-single highest-value infrastructure fix in this backlog.
+### Y3 — Actions runner assignment is flaky 🟠 infrastructure (was: unavailable)
+History: through PR #20 no job ran here on any OS — the **GLM 5.2 review** workflow
+failed in ~3 seconds with **no logs (HTTP 404)** on `ubuntu-latest`, exactly like the
+macOS build job, so it was never a macOS-billing problem but Actions not assigning
+runners for this private repo at all. As of 2 Sep 2026 that changed: CI run #70 on
+`main` got a `macos-14` runner, built, and ran the suite (red for the fixture reason
+recorded above). Residual: on 7 Sep the snapshot-purging PR's first two CI runs again
+"completed" in ~8 s with no steps and a 404 on the log download while a re-run queued
+normally, so runner assignment is intermittent. When a run has no steps and no logs,
+re-run it rather than reading it as a build failure; a run with steps is real.
+
+---
+
+## Open: Time Machine snapshots (created by the snapshot-purging branch)
+
+Background: [mjtsai, "Aren't Snapshots Purgeable?"](https://mjtsai.com/blog/2026/08/28/arent-snapshots-purgeable/)
+and Howard Oakley's [24 Aug](https://eclecticlight.co/2026/08/24/arent-snapshots-purgeable/),
+[27 Aug](https://eclecticlight.co/2026/08/27/why-can-purging-snapshots-fail/) and
+[2 Sep 2026](https://eclecticlight.co/2026/09/02/caches-and-purging-in-macos-tahoe/) articles.
+
+### Z1 — Verify the no-password path on a real Mac 🔴 S (verify first)
+The tmutil man page marks specific verbs "Requires root and Full Disk Access
+privileges" and none of the local-snapshot verbs carry the tag; Oakley's tmutil guide
+and two Apple Developer Forums posts show `tmutil deletelocalsnapshots <date>`
+succeeding without `sudo`. Nothing on this branch was run on a Mac (no local toolchain;
+CI on `macos-14` runners is intermittent — Y3). Run `tmutil listlocalsnapshots /` and
+`tmutil deletelocalsnapshots <date>` from Terminal as an admin, then from the app. If
+they need root after all, the `PrivilegedRunner` fallback in `SnapshotTool` kicks in
+automatically (one prompt per batch) — decide then whether to keep the unprivileged
+attempt or go straight to the prompt. Also confirm the exact refusal wording so
+`SnapshotRunner.Output.privilegeMarkers` matches it.
+
+### Z2 — Per-snapshot sizes 🟠 blocked on Apple
+Disk Utility shows Private Size / Cumulative Size (Oakley, [Understanding snapshot
+data in Disk Utility](https://eclecticlight.co/2021/11/13/understanding-snapshot-data-in-disk-utility/)),
+but `diskutil apfs listSnapshots -plist` and `tmutil` expose none, and the
+`fs_snapshot_*` syscalls carry no sizes. The window says so and links Disk Utility.
+Revisit only if a public API appears; do not estimate.
+
+### Z3 — Thinning urgency semantics 🟡 doc gap
+`tmutil thinlocalsnapshots` documents urgency only as "1-4". Oakley's logs show
+deleted(8) purging at urgency 3 for a Finder copy; community reports describe 4 as
+"stop backups, thin immediately, largest first". The Picker labels reflect that much
+and no more. Observe on a real Mac and tighten the labels.
+
+### Z4 — The reclaim summary's free-space figure counts purgeable space 🟡 S
+`AppModel.volumeFreeBytes` samples `volumeAvailableCapacityForImportantUsage`, which
+includes purgeable space (snapshots among it) and, per Oakley's timeline, lags by
+10–30 minutes. The snapshot hint now explains a flat number; consider showing plain
+`volumeAvailableCapacity` alongside (the Snapshots window already uses it).
+
+### Z5 — Only the boot volume; by-date deletion spans disks 🟡 decision
+The window manages `/` only. `tmutil deletelocalsnapshots <date>` removes that
+date's snapshot on *every* mounted Time Machine source (the dialog says so); external
+APFS volumes that Time Machine backs up are otherwise out of scope — the same S4
+question in a new coat.
 
 ---
 
@@ -257,4 +307,8 @@ always Trash (never permanent delete), and every auto-reclaim passes the same
 re-verification at trash time. System areas (PR #20) are the
 only paths outside home: a fixed catalog, direct children only, validated in Swift and
 re-checked as root before every `rm`, always permanent delete (the Trash cannot hold
-root-owned files), explicit user action only, never watch mode.
+root-owned files), explicit user action only, never watch mode. Time Machine local
+snapshots (the snapshot-purging branch) are the only non-path deletions: one name
+shape (`com.apple.TimeMachine.<date>.local`), three whitelisted `tmutil` verbs, never
+`diskutil apfs deleteSnapshot`, explicit action in the Snapshots window only, always
+permanent, no invented sizes, and the admin prompt only as a fallback.

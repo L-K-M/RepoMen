@@ -7,10 +7,12 @@ import Foundation
 /// narrowest privileged bridge there is: one prompt, one script, no helper tool or
 /// daemon installed or left behind.
 ///
-/// Only the two vetted script builders may pass through here
-/// (`SystemScanner.probeScript`, `SystemReclaimer.script(for:)`): every path they
-/// embed comes from the `SystemAreas` catalog or is validated against it first,
-/// and is quoted with `shellQuote`.
+/// Only the vetted script builders may pass through here: `SystemScanner.probeScript`
+/// and `SystemReclaimer.script(for:)` (every path they embed comes from the
+/// `SystemAreas` catalog or is validated against it first), and — as a fallback
+/// used only when an unprivileged run was refused — `SnapshotTool.privilegedScript`
+/// and `SnapshotTool.privilegedDeleteScript` (a whitelisted `tmutil` verb with
+/// validated operands). Every embedded word is quoted with `shellQuote`.
 enum PrivilegedRunner {
 
     enum Failure: Error, Equatable, LocalizedError {
