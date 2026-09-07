@@ -122,7 +122,7 @@ final class SnapshotModel: ObservableObject {
         let targets = checkedSnapshots
         guard !targets.isEmpty, !isWorking, !isLoading else { return }
         begin(status: "Deleting \(targets.count) snapshot\(targets.count == 1 ? "" : "s")…")
-        let freeBefore = Self.volumeFreeBytes()
+        let freeBefore = SnapshotTool.volumeFreeBytes()
 
         workTask = Task { [weak self] in
             let outcomes = await SnapshotTool.delete(targets, progress: { current, total, snapshot in
@@ -132,10 +132,11 @@ final class SnapshotModel: ObservableObject {
                 }
             })
             let remaining = await Self.settleAndList()
-            let freeAfter = Self.volumeFreeBytes()
+            let freeAfter = SnapshotTool.volumeFreeBytes()
             guard let self else { Self.operationFinished(); return }
 
-            let deleted = outcomes.filter { $0.failure == nil }.map(\.snapshot)
+            let succeeded = outcomes.filter { $0.failure == nil }
+            let deleted = succeeded.map(\.snapshot)
             if let remaining {
                 self.apply(remaining)
             } else {
@@ -147,6 +148,12 @@ final class SnapshotModel: ObservableObject {
                 text = "No snapshot was deleted."
             } else {
                 text = "Deleted \(deleted.count) of \(targets.count) snapshot\(targets.count == 1 ? "" : "s") permanently."
+                // The only per-snapshot size macOS lets us see: what each removal
+                // actually gave back, measured as it happened.
+                for outcome in succeeded.prefix(8) {
+                    text += "\n• \(outcome.snapshot.name) — \(Self.freedText(outcome.freedBytes))"
+                }
+                if succeeded.count > 8 { text += "\n…and \(succeeded.count - 8) more" }
             }
             text += Self.freeSpaceLine(before: freeBefore, after: freeAfter, expectGrowth: !deleted.isEmpty)
             let failures = outcomes.compactMap { outcome in
@@ -173,7 +180,7 @@ final class SnapshotModel: ObservableObject {
         let urgency = thinUrgency
         let before = snapshots
         begin(status: "Asking Time Machine to release \(Format.bytes(bytes))…")
-        let freeBefore = Self.volumeFreeBytes()
+        let freeBefore = SnapshotTool.volumeFreeBytes()
 
         workTask = Task { [weak self] in
             let result: Result<SnapshotTool.ThinResult, Error>
@@ -183,7 +190,7 @@ final class SnapshotModel: ObservableObject {
                 result = .failure(error)
             }
             let remaining = await Self.settleAndList()
-            let freeAfter = Self.volumeFreeBytes()
+            let freeAfter = SnapshotTool.volumeFreeBytes()
             guard let self else { Self.operationFinished(); return }
 
             if let remaining { self.apply(remaining) }
@@ -250,14 +257,12 @@ final class SnapshotModel: ObservableObject {
         return try? await SnapshotTool.listAll()
     }
 
-    /// Plain free space on the boot volume — deliberately NOT
-    /// `volumeAvailableCapacityForImportantUsage`, which already counts purgeable
-    /// space (snapshots included) and lags by many minutes; this is the figure that
-    /// actually moves when a snapshot is gone.
-    private nonisolated static func volumeFreeBytes() -> Int64? {
-        let root = URL(fileURLWithPath: SnapshotTool.mountPoint)
-        let values = try? root.resourceValues(forKeys: [.volumeAvailableCapacityKey])
-        return values?.volumeAvailableCapacity.map(Int64.init)
+    /// One snapshot's line in the report: what its removal measurably gave back.
+    private static func freedText(_ freedBytes: Int64?) -> String {
+        guard let freedBytes else { return "size not measurable" }
+        return freedBytes > 0
+            ? "freed \(Format.bytes(freedBytes))"
+            : "nothing measurable yet — APFS frees blocks in the background"
     }
 
     private static func freeSpaceLine(before: Int64?, after: Int64?, expectGrowth: Bool) -> String {

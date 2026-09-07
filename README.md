@@ -89,7 +89,9 @@ Time Machine thin them until a given amount is free (the summary after a reclaim
 pre-fills what you just freed), or check specific snapshots and **Delete Checked…**.
 Both are permanent and normally need no password; if macOS insists on administrator
 privileges, RepoMen asks once. There is no size column because macOS gives apps none —
-Disk Utility (View › Show APFS Snapshots) shows each snapshot's Private Size.
+Disk Utility (View › Show APFS Snapshots) shows each snapshot's Private Size. After a
+deletion, the report lists what each snapshot's removal actually freed, measured as it
+happened.
 
 Right-click any row to reveal it in Finder or exclude it from future scans. Settings
 (⌘,) manages scan folders, per-kind rule toggles, and Trash vs. permanent delete.

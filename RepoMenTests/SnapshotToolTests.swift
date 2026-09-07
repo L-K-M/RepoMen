@@ -263,13 +263,61 @@ final class SnapshotToolTests: XCTestCase {
         XCTAssertEqual(outcomes.first?.failure, SnapshotRunner.Failure.timedOut(600).errorDescription)
     }
 
+    func testDeleteMeasuresWhatEachSnapshotActuallyFreed() async {
+        var samples: [Int64?] = [100, 130, 130, 135]   // before/after, per snapshot
+        var settles = 0
+        let outcomes = await SnapshotTool.delete([older, newer], runner: { _, _ in
+            self.output(0)
+        }, adminRunner: { _ in
+            XCTFail("no prompt on success")
+            return ""
+        }, freeSpace: {
+            samples.isEmpty ? nil : samples.removeFirst()
+        }, settle: {
+            settles += 1
+        })
+        XCTAssertEqual(outcomes.map(\.freedBytes), [30, 5])
+        XCTAssertEqual(settles, 2, "APFS gets a moment before every after-sample")
+    }
+
+    func testDeleteLeavesTheSizeUnknownWhenItCannotBeMeasured() async {
+        let outcomes = await SnapshotTool.delete([older, newer], runner: { arguments, _ in
+            arguments[1] == self.older.dateToken
+                ? self.output(0)
+                : self.output(1, stderr: "Failed to delete local snapshot")
+        }, adminRunner: { _ in
+            ""
+        }, freeSpace: {
+            nil
+        }, settle: {})
+        XCTAssertEqual(outcomes.map(\.freedBytes), [nil, nil],
+                       "no free-space figure and a failed delete both mean 'unknown', never 0")
+
+        let privileged = await SnapshotTool.delete([older], runner: { _, _ in
+            self.output(1, stderr: "requires root")
+        }, adminRunner: { _ in
+            self.payload([("OK", self.older.dateToken)])
+        }, freeSpace: {
+            100
+        }, settle: {})
+        XCTAssertNil(privileged.first?.freedBytes, "one script for the whole batch — nothing to attribute per snapshot")
+        XCTAssertNil(privileged.first?.failure)
+    }
+
+    func testFreedIsNeverNegativeAndNeedsBothSamples() {
+        XCTAssertEqual(SnapshotTool.freed(before: 100, after: 130), 30)
+        XCTAssertEqual(SnapshotTool.freed(before: 100, after: 90), 0, "another writer can shrink free space meanwhile")
+        XCTAssertNil(SnapshotTool.freed(before: nil, after: 90))
+        XCTAssertNil(SnapshotTool.freed(before: 100, after: nil))
+    }
+
     func testDeleteReportsProgressBeforeEachSnapshot() async {
         var progress: [String] = []
         _ = await SnapshotTool.delete([older, newer], runner: { _, _ in
             self.output(0)
         }, adminRunner: { _ in
             ""
-        }, progress: { current, total, snapshot in
+        }, settle: {}, progress: { current, total, snapshot in
             progress.append("\(current)/\(total) \(snapshot.dateToken)")
         })
         XCTAssertEqual(progress, ["1/2 2026-09-06-091500", "2/2 2026-09-07-101010"])
