@@ -53,7 +53,8 @@ containers you still need). RepoMen sits deliberately in the middle:
   **Local snapshots** pane (sidebar → Time Machine) lets you ask Time Machine to
   release an amount (`tmutil thinlocalsnapshots`) or delete specific snapshots —
   Time Machine's own local snapshots only. Snapshots made by other apps (Arq,
-  Carbon Copy Cloner, macOS updates) are listed as left alone and never touched.
+  Carbon Copy Cloner, macOS updates) are listed greyed as "left alone" and never
+  touched.
 
 See [PLAN.md](PLAN.md) for the full design and trust model.
 

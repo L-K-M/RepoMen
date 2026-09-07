@@ -45,6 +45,13 @@ final class SnapshotModel: ObservableObject {
     private var loadTask: Task<Void, Never>?
     private var workTask: Task<Void, Never>?
 
+    /// Everything the table shows: Time Machine's snapshots first, then other apps'
+    /// as greyed, uncheckable rows.
+    var rows: [SnapshotRow] {
+        SnapshotRow.rows(from: SnapshotTool.Listing(snapshots: snapshots,
+                                                    otherNames: otherSnapshotNames))
+    }
+
     /// Checked snapshots in list order (oldest first — the order to delete in).
     var checkedSnapshots: [LocalSnapshot] {
         snapshots.filter { checkedIDs.contains($0.id) }

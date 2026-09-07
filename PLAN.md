@@ -146,8 +146,8 @@ His advice — delete the snapshots yourself — is what RepoMen offers, three w
   snapshots) lists Time Machine's local snapshots (name, creation time, age),
   nothing pre-checked; checked ones are deleted one by one with
   `tmutil deletelocalsnapshots <date>`. Snapshots made by other apps (Arq, Carbon
-  Copy Cloner, macOS updates) are named as left alone — they hold freed blocks too —
-  and can't be checked.
+  Copy Cloner, macOS updates) appear in the same table, greyed, badged "left alone"
+  and uncheckable — they hold freed blocks too, and the user should see them.
 
 The trust model, applied to things that are not paths:
 

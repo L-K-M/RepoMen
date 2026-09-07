@@ -75,6 +75,18 @@ final class SnapshotToolTests: XCTestCase {
         XCTAssertTrue(onlyTimeMachine.isEmpty, "a foreign snapshot must never become deletable")
     }
 
+    func testRowsPutTimeMachineFirstAndMarkForeignOnesUncheckable() {
+        let listing = SnapshotTool.Listing(
+            snapshots: [older, newer],
+            otherNames: ["com_haystacksoftware_arqagent_E8663CFC_6"])
+        let rows = SnapshotRow.rows(from: listing)
+        XCTAssertEqual(rows.map(\.name), [older.name, newer.name, "com_haystacksoftware_arqagent_E8663CFC_6"])
+        XCTAssertEqual(rows.map(\.isTimeMachine), [true, true, false])
+        XCTAssertEqual(rows.map(\.owner), ["Time Machine", "Time Machine", "Arq"])
+        XCTAssertNil(rows[2].snapshot, "a foreign row carries nothing that could be deleted")
+        XCTAssertEqual(Set(rows.map(\.id)).count, 3, "ids stay unique across both kinds")
+    }
+
     func testParseListOfEmptyOutputIsEmpty() {
         XCTAssertTrue(SnapshotTool.parseList("").isEmpty)
         XCTAssertTrue(SnapshotTool.parseList("Snapshots for disk /:\n").isEmpty)
