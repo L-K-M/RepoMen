@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// The Time Machine Snapshots window: lists the boot volume's local snapshots,
-/// deletes the checked ones, or asks Time Machine to thin by an amount. Both actions
-/// pass a confirmation dialog that says "permanent". There is no size column: macOS
-/// gives no per-snapshot size to anything but Disk Utility (its Private Size
-/// column), so the window says so and offers to open Disk Utility rather than guess.
+/// The Snapshots pane (sidebar → Time Machine → Local snapshots): lists the boot
+/// volume's Time Machine local snapshots, deletes the checked ones, or asks Time
+/// Machine to thin by an amount. Both actions pass a confirmation dialog that says
+/// "permanent". There is no size column: macOS gives no per-snapshot size to
+/// anything but Disk Utility (its Private Size column), so the pane says so and
+/// offers to open Disk Utility rather than guess. Snapshots made by other apps are
+/// named as "left alone" — they hold freed blocks too — and never offered.
 struct SnapshotsView: View {
     @EnvironmentObject private var model: SnapshotModel
 
@@ -13,12 +15,14 @@ struct SnapshotsView: View {
             explanation
             table
             controls
+            if !model.otherSnapshotNames.isEmpty {
+                otherSnapshotsNote
+            }
             Divider()
             releaseSection
             footnote
         }
         .padding(16)
-        .frame(minWidth: 620, minHeight: 460)
         .onAppear {
             if !model.isWorking { model.refresh() }
         }
@@ -66,8 +70,9 @@ struct SnapshotsView: View {
             Time Machine keeps hourly local snapshots of this disk for about 24 hours. \
             Files you delete stay allocated until every snapshot that references them \
             is gone — so free space can stay flat after emptying the Trash, and macOS \
-            purges snapshots on its own only unreliably. Listed here are Time Machine's \
-            local snapshots only; snapshots made by other apps are never shown or touched.
+            purges snapshots on its own only unreliably. Only Time Machine's local \
+            snapshots can be deleted here; snapshots made by other apps are noted below \
+            and never touched.
             """)
             .font(.callout)
             .foregroundStyle(.secondary)
@@ -150,6 +155,36 @@ struct SnapshotsView: View {
             }
             .disabled(model.checkedSnapshots.isEmpty || model.isWorking || model.isLoading)
             .help("Permanently delete the checked snapshots — macOS cannot undo this")
+        }
+    }
+
+    /// tmutil lists every snapshot on the volume, not just Time Machine's. Naming
+    /// the others keeps "no snapshots" from reading as "nothing holds your space",
+    /// and points at who does manage them.
+    private var otherSnapshotsNote: some View {
+        let names = model.otherSnapshotNames
+        let owners = Set(names.map(SnapshotTool.ownerLabel(forForeignName:)))
+            .sorted().joined(separator: ", ")
+        return VStack(alignment: .leading, spacing: 3) {
+            Label {
+                Text("Also on this disk, left alone: \(names.count) snapshot\(names.count == 1 ? "" : "s") by \(owners). \(names.count == 1 ? "It" : "They") can hold freed blocks too — manage \(names.count == 1 ? "it" : "them") in that app or in Disk Utility.")
+            } icon: {
+                Image(systemName: "hand.raised")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            ForEach(names.prefix(3), id: \.self) { name in
+                Text(name)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            if names.count > 3 {
+                Text("…and \(names.count - 3) more")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
     }
 

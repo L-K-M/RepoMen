@@ -3,6 +3,7 @@ import SwiftUI
 /// Category list with live per-category totals — the "where did my disk go" overview.
 struct SidebarView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var snapshotModel: SnapshotModel
 
     var body: some View {
         List(selection: $model.sidebarSelection) {
@@ -13,8 +14,37 @@ struct SidebarView: View {
                     row(for: .category(category), label: category.label, symbol: category.symbol)
                 }
             }
+
+            Section("Time Machine") {
+                snapshotsRow
+            }
         }
         .listStyle(.sidebar)
+    }
+
+    /// Snapshots are not paths and have no byte total (macOS exposes none to apps),
+    /// so this row carries a count once the pane has listed them — never a size,
+    /// and never a share of "Everything".
+    private var snapshotsRow: some View {
+        let count = snapshotModel.snapshots.count
+        return HStack {
+            Label {
+                Text("Local snapshots")
+            } icon: {
+                Image(systemName: "clock.arrow.circlepath")
+                    .foregroundStyle(Color.purple)
+            }
+            Spacer()
+            if snapshotModel.hasLoaded {
+                Text("\(count)")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .help(count == 1 ? "1 Time Machine local snapshot"
+                                     : "\(count) Time Machine local snapshots")
+            }
+        }
+        .tag(SidebarEntry.snapshots)
     }
 
     private func row(for entry: SidebarEntry, label: String, symbol: String) -> some View {

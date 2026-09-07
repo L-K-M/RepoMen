@@ -11,7 +11,11 @@ import Foundation
 ///   tokens or plain integers. `SnapshotRunner` re-checks before spawning.
 /// - A snapshot can only be named through `LocalSnapshot`, which accepts nothing but
 ///   `com.apple.TimeMachine.<date>.local` — never third-party, macOS-update or
-///   `.backup` snapshots. tmutil itself only ever touches Time Machine's own.
+///   `.backup` snapshots. That filter does real work: despite its name,
+///   `tmutil listlocalsnapshots` lists EVERY snapshot on the volume (an Arq agent
+///   snapshot `com_haystacksoftware_arqagent_…` was seen in the field). Foreign
+///   names are reported as "left alone" (`Listing.otherNames`) so the user knows
+///   they exist and may hold freed blocks, and are never offered for deletion.
 /// - Deletion is permanent and the UI says so; nothing is pre-selected; every
 ///   destructive action passes a confirmation dialog; watch mode never comes here;
 ///   snapshots are never routed through `Reclaimer` or `SystemReclaimer`.
@@ -57,6 +61,17 @@ enum SnapshotTool {
         let snapshot: LocalSnapshot
         /// nil = deleted; otherwise why not.
         let failure: String?
+    }
+
+    /// What `tmutil listlocalsnapshots` reported: Time Machine's local snapshots
+    /// (the only ones RepoMen manages) plus the names of every other snapshot on
+    /// the volume, which RepoMen shows but never touches.
+    struct Listing: Sendable, Equatable {
+        let snapshots: [LocalSnapshot]
+        /// Non-Time-Machine snapshot names, in listing order, deduplicated.
+        let otherNames: [String]
+
+        static let empty = Listing(snapshots: [], otherNames: [])
     }
 
     struct ThinResult: Sendable, Equatable {
@@ -117,20 +132,44 @@ enum SnapshotTool {
     // MARK: Parsing (pure)
 
     /// Parses `tmutil listlocalsnapshots` output: a `Snapshots for disk /:` header
-    /// (older releases print none), then one snapshot name per line. Anything that
-    /// is not a Time Machine local snapshot name is ignored, never surfaced.
-    /// Deduplicated and oldest first — the order to delete in (removing a middle
-    /// snapshot frees less than expected while older ones still hold the data).
-    static func parseList(_ output: String) -> [LocalSnapshot] {
+    /// (older releases print none), then one snapshot name per line — Time Machine's
+    /// and anyone else's. Names never contain whitespace, which is what separates
+    /// them from the header. Time Machine local snapshots come back deduplicated and
+    /// oldest first (the order to delete in: removing a middle snapshot frees less
+    /// than expected while older ones still hold the data); every other name is
+    /// kept verbatim in `otherNames`.
+    static func parseListing(_ output: String) -> Listing {
         var seen = Set<String>()
         var snapshots: [LocalSnapshot] = []
+        var others: [String] = []
         for line in output.split(whereSeparator: \.isNewline) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard let snapshot = LocalSnapshot(name: trimmed),
-                  seen.insert(snapshot.id).inserted else { continue }
-            snapshots.append(snapshot)
+            guard !trimmed.isEmpty, !trimmed.contains(where: \.isWhitespace),
+                  seen.insert(trimmed).inserted else { continue }
+            if let snapshot = LocalSnapshot(name: trimmed) {
+                snapshots.append(snapshot)
+            } else {
+                others.append(trimmed)
+            }
         }
-        return snapshots.sorted { $0.date < $1.date }
+        return Listing(snapshots: snapshots.sorted { $0.date < $1.date }, otherNames: others)
+    }
+
+    /// The Time Machine local snapshots alone (see `parseListing`).
+    static func parseList(_ output: String) -> [LocalSnapshot] {
+        parseListing(output).snapshots
+    }
+
+    /// Who made a snapshot RepoMen leaves alone, from its name prefix — so the
+    /// pane can say "1 snapshot by Arq" instead of printing an opaque identifier.
+    static func ownerLabel(forForeignName name: String) -> String {
+        let lower = name.lowercased()
+        if lower.hasPrefix("com.bombich.ccc") { return "Carbon Copy Cloner" }
+        if lower.hasPrefix("com_haystacksoftware") || lower.hasPrefix("com.haystacksoftware") { return "Arq" }
+        if lower.hasPrefix("com.apple.os.update") { return "a macOS update" }
+        if lower.hasPrefix("com.apple.timemachine") { return "Time Machine (not a local snapshot)" }
+        if lower.hasPrefix("com.apple.") { return "macOS" }
+        return "another app"
     }
 
     /// Date token → status from the batch delete script's decoded output.
@@ -176,12 +215,18 @@ enum SnapshotTool {
 
     // MARK: Operations
 
-    /// The boot volume's local Time Machine snapshots, oldest first. Listing never
-    /// needs privileges; a failure is thrown with tmutil's message.
-    static func list(runner: Runner = SnapshotRunner.run) async throws -> [LocalSnapshot] {
+    /// Everything on the boot volume: Time Machine's local snapshots (oldest first)
+    /// and the names of the others. Listing never needs privileges; a failure is
+    /// thrown with tmutil's message.
+    static func listAll(runner: Runner = SnapshotRunner.run) async throws -> Listing {
         let output = try await runner(listArguments, listTimeout)
         guard output.succeeded else { throw Failure.toolFailed(output.message) }
-        return parseList(output.stdout)
+        return parseListing(output.stdout)
+    }
+
+    /// The Time Machine local snapshots alone, oldest first.
+    static func list(runner: Runner = SnapshotRunner.run) async throws -> [LocalSnapshot] {
+        try await listAll(runner: runner).snapshots
     }
 
     /// Deletes `snapshots` one by one (in the order given — callers pass oldest

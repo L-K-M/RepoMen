@@ -50,9 +50,10 @@ containers you still need). RepoMen sits deliberately in the middle:
   stays allocated until that snapshot is gone — macOS is supposed to purge them on
   demand but [often doesn't](https://mjtsai.com/blog/2026/08/28/arent-snapshots-purgeable/).
   After a reclaim, RepoMen says when snapshots are holding the space, and the
-  **Snapshots** window lets you ask Time Machine to release an amount (`tmutil
-  thinlocalsnapshots`) or delete specific snapshots — Time Machine's own local
-  snapshots only, never Carbon Copy Cloner's or macOS's update snapshots.
+  **Local snapshots** pane (sidebar → Time Machine) lets you ask Time Machine to
+  release an amount (`tmutil thinlocalsnapshots`) or delete specific snapshots —
+  Time Machine's own local snapshots only. Snapshots made by other apps (Arq,
+  Carbon Copy Cloner, macOS updates) are listed as left alone and never touched.
 
 See [PLAN.md](PLAN.md) for the full design and trust model.
 
@@ -81,13 +82,13 @@ protected folder (e.g. `~/Documents`).
 per scan and once per reclaim; checked system items are deleted permanently (the
 Trash can't take root-owned files) after being re-verified as root.
 
-**Snapshots** (⌘⇧S) opens the Time Machine local snapshots of your disk. Use
-**Release…** to have Time Machine thin them until a given amount is free (the summary
-after a reclaim pre-fills what you just freed), or check specific snapshots and
-**Delete Checked…**. Both are permanent and normally need no password; if macOS
-insists on administrator privileges, RepoMen asks once. There is no size column
-because macOS gives apps none — Disk Utility (View › Show APFS Snapshots) shows each
-snapshot's Private Size.
+**Time Machine → Local snapshots** in the sidebar (⌘⇧S, or the clock button in the
+toolbar) shows the Time Machine local snapshots of your disk. Use **Release…** to have
+Time Machine thin them until a given amount is free (the summary after a reclaim
+pre-fills what you just freed), or check specific snapshots and **Delete Checked…**.
+Both are permanent and normally need no password; if macOS insists on administrator
+privileges, RepoMen asks once. There is no size column because macOS gives apps none —
+Disk Utility (View › Show APFS Snapshots) shows each snapshot's Private Size.
 
 Right-click any row to reveal it in Finder or exclude it from future scans. Settings
 (⌘,) manages scan folders, per-kind rule toggles, and Trash vs. permanent delete.

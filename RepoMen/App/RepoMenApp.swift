@@ -38,8 +38,8 @@ struct RepoMenApp: App {
                 Button("Scan System Areas…") { model.scanSystemAreas() }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
                     .disabled(model.isBusy || model.isReclaiming || model.isSystemScanning)
-                // Opens its own window; listing is read-only and needs no password.
-                OpenSnapshotsWindowButton()
+                // Selects the sidebar row; listing is read-only and needs no password.
+                ShowSnapshotsButton(model: model)
                 Button("Stop Scan") {
                     if model.isSystemScanning {
                         model.cancelSystemScan()
@@ -108,25 +108,21 @@ struct RepoMenApp: App {
                 .environmentObject(preferences)
                 .environmentObject(watchManager)
         }
-
-        // Time Machine local snapshots get their own window rather than rows in the
-        // main table: a snapshot has no path, no measurable size and no Trash, so
-        // every row affordance (Reveal, Exclude, sizing, watch) would be a lie.
-        Window("Time Machine Snapshots", id: "snapshots") {
-            SnapshotsView()
-                .environmentObject(snapshotModel)
-        }
-        .defaultSize(width: 720, height: 540)
     }
 }
 
-/// The Scan menu's entry to the snapshots window. A separate view so it can read
-/// the `openWindow` action from the environment, which a bare menu `Button` cannot.
-private struct OpenSnapshotsWindowButton: View {
+/// The Scan menu's entry to the snapshots pane: selects the sidebar row and brings
+/// the main window forward (it may be closed). A separate view so it can read the
+/// `openWindow` action from the environment, which a bare menu `Button` cannot.
+private struct ShowSnapshotsButton: View {
+    @ObservedObject var model: AppModel
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Button("Time Machine Snapshots…") { openWindow(id: "snapshots") }
-            .keyboardShortcut("s", modifiers: [.command, .shift])
+        Button("Time Machine Snapshots") {
+            model.sidebarSelection = .snapshots
+            openWindow(id: "main")
+        }
+        .keyboardShortcut("s", modifiers: [.command, .shift])
     }
 }
