@@ -6,6 +6,9 @@ artifacts and developer caches that pile up when you build a lot of software —
 downloads, Chrome profile caches — and reclaims exactly what you tell it to, nothing
 more.
 
+> [!IMPORTANT]
+> LLM disclosure: This codebase was written with substantial help from large language models: AI coding agents working from the [`AGENTS.md`](AGENTS.md) brief in this repo.
+
 **Version:** <!-- version -->0.1.0<!-- /version -->
 
 ## Why
