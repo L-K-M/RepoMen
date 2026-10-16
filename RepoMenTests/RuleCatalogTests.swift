@@ -42,6 +42,25 @@ final class RuleCatalogTests: XCTestCase {
         XCTAssertNil(match(".build", siblings: []))
     }
 
+    func testTagFileNameAloneDoesNotProveRegenerability() {
+        XCTAssertNil(match("artifacts", siblings: [], contents: ["CACHEDIR.TAG"]))
+        XCTAssertFalse(RuleCatalog.isUnambiguousArtifactName("artifacts"))
+        XCTAssertNil(match("build", siblings: ["Package.swift"], contents: ["Sources", "Tests"]),
+                     "a Swift manifest does not make a mixed build directory disposable")
+    }
+
+    func testValidCacheTagMatchesAnyNameAndRespectsKindToggle() {
+        let hit = RuleCatalog.match(directoryName: "artifacts", parentPath: "/dev/project/build",
+                                    siblingNames: [], contents: { [] }, enabledKinds: allKinds,
+                                    cacheTagIsValid: { true })
+        XCTAssertEqual(hit?.rule.kind, .taggedCache)
+        XCTAssertEqual(hit?.anchorPaths, ["/dev/project/build/artifacts/CACHEDIR.TAG"])
+        XCTAssertNil(RuleCatalog.match(directoryName: "artifacts", parentPath: "/dev/project/build",
+                                       siblingNames: [], contents: { [] },
+                                       enabledKinds: allKinds.subtracting([.taggedCache]),
+                                       cacheTagIsValid: { true }))
+    }
+
     func testXcodeBuildMatchesOnSuffixAnchor() {
         let hit = match("build", siblings: ["MyApp.xcodeproj"])
         XCTAssertEqual(hit?.rule.kind, .xcodeBuild)

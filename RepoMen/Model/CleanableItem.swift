@@ -13,6 +13,7 @@ struct CleanableItem: Identifiable, Hashable, Sendable {
     /// proved this directory regenerable (`…/Cargo.toml`, `…/.venv/pyvenv.cfg`). Empty
     /// for well-known caches, which are re-verified against the static catalog roots
     /// instead. See `Reclaimer`.
+    /// Tagged caches additionally re-validate their tag's signature and file type.
     let anchorPaths: [String]
     let isKnownCache: Bool
 

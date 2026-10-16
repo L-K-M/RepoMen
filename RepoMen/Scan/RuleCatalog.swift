@@ -23,21 +23,26 @@ struct ProjectArtifactRule: Sendable {
     /// Any-of entry names that must exist INSIDE the directory (`pyvenv.cfg`,
     /// `CMakeCache.txt`). Empty means no content check.
     let innerAnchors: [String]
+    /// A valid CACHEDIR.TAG is sufficient for any directory name. Its signature and
+    /// regular-file type must be checked, both here and again at reclaim time.
+    let requiresCacheDirectoryTag: Bool
 
     init(kind: ArtifactKind,
          directoryNames: Set<String>,
          directoryNamePrefixes: [String] = [],
          anchors: [Anchor] = [],
-         innerAnchors: [String] = []) {
+         innerAnchors: [String] = [],
+         requiresCacheDirectoryTag: Bool = false) {
         self.kind = kind
         self.directoryNames = directoryNames
         self.directoryNamePrefixes = directoryNamePrefixes
         self.anchors = anchors
         self.innerAnchors = innerAnchors
+        self.requiresCacheDirectoryTag = requiresCacheDirectoryTag
     }
 
     func appliesTo(directoryName: String) -> Bool {
-        directoryNames.contains(directoryName)
+        requiresCacheDirectoryTag || directoryNames.contains(directoryName)
             || directoryNamePrefixes.contains { directoryName.hasPrefix($0) }
     }
 }
@@ -98,6 +103,9 @@ enum RuleCatalog {
         // terraform.tfstate) live OUTSIDE .terraform and are never touched.
         .init(kind: .terraformCache, directoryNames: [".terraform"],
               anchors: [.sibling(".terraform.lock.hcl"), .siblingSuffix(".tf")]),
+        // Custom build scripts can declare an output-only tree without making a
+        // generic build/ name (which may contain source copies) reclaimable.
+        .init(kind: .taggedCache, directoryNames: [], requiresCacheDirectoryTag: true),
     ]
 
     /// Directory names that are always build debris and never worth descending into,
@@ -115,7 +123,10 @@ enum RuleCatalog {
     /// Names that match on the name alone (no anchors at all) — the reclaimer's
     /// fallback verification for items without anchor paths.
     static func isUnambiguousArtifactName(_ name: String) -> Bool {
-        rules.contains { $0.anchors.isEmpty && $0.innerAnchors.isEmpty && $0.appliesTo(directoryName: name) }
+        rules.contains {
+            $0.anchors.isEmpty && $0.innerAnchors.isEmpty && !$0.requiresCacheDirectoryTag
+                && $0.appliesTo(directoryName: name)
+        }
     }
 
     /// A successful match: the rule plus the concrete anchor paths that proved it
@@ -132,12 +143,17 @@ enum RuleCatalog {
                       parentPath: String,
                       siblingNames: Set<String>,
                       contents: () -> Set<String>,
-                      enabledKinds: Set<ArtifactKind>) -> Match? {
+                      enabledKinds: Set<ArtifactKind>,
+                      cacheTagIsValid: () -> Bool = { false }) -> Match? {
         var innerNames: Set<String>?
         for rule in rules where rule.appliesTo(directoryName: directoryName) {
             guard enabledKinds.contains(rule.kind) else { continue }
 
             var anchorPaths: [String] = []
+            if rule.requiresCacheDirectoryTag {
+                guard cacheTagIsValid() else { continue }
+                anchorPaths.append(parentPath + "/" + directoryName + "/" + CacheDirectoryTag.fileName)
+            }
             if !rule.anchors.isEmpty {
                 for anchor in rule.anchors {
                     switch anchor {

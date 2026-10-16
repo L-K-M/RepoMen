@@ -15,6 +15,9 @@ final class ScannerTests: XCTestCase {
         root = URL(fileURLWithPath: NSTemporaryDirectory()).resolvingSymlinksInPath()
             .appendingPathComponent("RepoMenScannerTests-\(UUID().uuidString)")
         try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        if let path = try root.resourceValues(forKeys: [.canonicalPathKey]).canonicalPath {
+            root = URL(fileURLWithPath: path)
+        }
     }
 
     override func tearDownWithError() throws {
@@ -39,6 +42,187 @@ final class ScannerTests: XCTestCase {
             roots: [root],
             excludedPaths: exclude,
             enabledKinds: Set(ArtifactKind.allCases)))
+    }
+
+    /// Mirrors Git's reciprocal registration: the common directory names the
+    /// worktree's `.git` file, and that file names its administrative directory.
+    private func registerWorktree(_ relativePath: String,
+                                  commonDirectory: String = "project/.git",
+                                  name: String = "editor") throws {
+        let worktree = root.appendingPathComponent(relativePath)
+        let registration = root.appendingPathComponent(commonDirectory)
+            .appendingPathComponent("worktrees/\(name)")
+        try make(dirs: [relativePath, commonDirectory + "/worktrees/\(name)"], files: [])
+        try Data("gitdir: \(registration.path)\n".utf8)
+            .write(to: worktree.appendingPathComponent(".git"))
+        try Data("\(worktree.appendingPathComponent(".git").path)\n".utf8)
+            .write(to: registration.appendingPathComponent("gitdir"))
+        try Data("../..\n".utf8).write(to: registration.appendingPathComponent("commondir"))
+    }
+
+    func testFindsRegisteredHiddenWorktreesWithoutEnteringOtherHiddenTrees() throws {
+        try registerWorktree("project/.claude/worktrees/editor")
+        try make(dirs: ["project/.claude/worktrees/editor/.build",
+                        "project/.claude/unregistered/.build",
+                        "project/.git/nested/.build"],
+                 files: ["project/.claude/worktrees/editor/Package.swift",
+                         "project/.claude/unregistered/Package.swift",
+                         "project/.git/nested/Package.swift"])
+
+        XCTAssertEqual(scan().map(\.path),
+                       [root.appendingPathComponent("project/.claude/worktrees/editor/.build").path])
+    }
+
+    func testFindsOtherHiddenWorktreesFromALinkedWorktree() throws {
+        try registerWorktree("linked", name: "linked")
+        try registerWorktree("linked/.claude/worktrees/editor")
+        try make(dirs: ["linked/.claude/worktrees/editor/.build"],
+                 files: ["linked/.claude/worktrees/editor/Package.swift"])
+        let found = Scanner.scan(ScanConfiguration(
+            roots: [root.appendingPathComponent("linked")], excludedPaths: [],
+            enabledKinds: Set(ArtifactKind.allCases)))
+
+        XCTAssertEqual(found.map(\.path),
+                       [root.appendingPathComponent("linked/.claude/worktrees/editor/.build").path])
+    }
+
+    func testHiddenWorktreeDiscoveryStaysWithinConfiguredRoots() throws {
+        try registerWorktree("outside/.hidden/editor")
+        try make(dirs: ["outside/.hidden/editor/.build"],
+                 files: ["outside/.hidden/editor/Package.swift"])
+        let found = Scanner.scan(ScanConfiguration(
+            roots: [root.appendingPathComponent("project")], excludedPaths: [],
+            enabledKinds: Set(ArtifactKind.allCases)))
+
+        XCTAssertTrue(found.isEmpty)
+    }
+
+    func testHiddenWorktreeDiscoveryHonorsExcludedAncestorsAndRoot() throws {
+        try registerWorktree("project/.claude/worktrees/editor")
+        try make(dirs: ["project/.claude/worktrees/editor/.build"],
+                 files: ["project/.claude/worktrees/editor/Package.swift"])
+
+        for excluded in ["project", "project/.claude", "project/.claude/worktrees/editor"] {
+            XCTAssertTrue(scan(exclude: [root.appendingPathComponent(excluded).path]).isEmpty,
+                          "excluded ancestor: \(excluded)")
+        }
+    }
+
+    func testHiddenWorktreeDiscoveryRejectsStaleAndForgedRegistrations() throws {
+        try registerWorktree("project/.hidden/editor")
+        try make(dirs: ["project/.hidden/editor/.build"],
+                 files: ["project/.hidden/editor/Package.swift"])
+        let gitFile = root.appendingPathComponent("project/.hidden/editor/.git")
+        try Data("gitdir: /unrelated/metadata\n".utf8).write(to: gitFile)
+        XCTAssertTrue(scan().isEmpty, "the worktree must point back to its registration")
+
+        try fileManager.removeItem(at: gitFile)
+        XCTAssertTrue(scan().isEmpty, "a stale registration does not authorize hidden traversal")
+    }
+
+    func testHiddenWorktreeDiscoveryAcceptsRelativePointersAndRejectsWrongCommonDirectory() throws {
+        try registerWorktree("project/.claude/worktrees/editor")
+        try make(dirs: ["project/.claude/worktrees/editor/.build"],
+                 files: ["project/.claude/worktrees/editor/Package.swift"])
+        let gitFile = root.appendingPathComponent("project/.claude/worktrees/editor/.git")
+        let registration = root.appendingPathComponent("project/.git/worktrees/editor")
+        try Data("gitdir: ../../../.git/worktrees/editor\n".utf8).write(to: gitFile)
+        try Data("../../../.claude/worktrees/editor/.git\n".utf8)
+            .write(to: registration.appendingPathComponent("gitdir"))
+        XCTAssertEqual(scan().count, 1)
+
+        try Data("../../..\n".utf8).write(to: registration.appendingPathComponent("commondir"))
+        XCTAssertTrue(scan().isEmpty, "commondir must identify this registration's Git common directory")
+    }
+
+    func testHiddenWorktreeDiscoveryRejectsSymlinkedRegistrationDirectories() throws {
+        try registerWorktree("project/.hidden/editor")
+        try make(dirs: ["project/.hidden/editor/.build"],
+                 files: ["project/.hidden/editor/Package.swift"])
+        let registration = root.appendingPathComponent("project/.git/worktrees/editor")
+        let moved = root.appendingPathComponent("moved-registration")
+        try fileManager.moveItem(at: registration, to: moved)
+        try fileManager.createSymbolicLink(at: registration, withDestinationURL: moved)
+
+        XCTAssertTrue(scan().isEmpty)
+    }
+
+    func testHiddenWorktreeDiscoveryRejectsSymlinkedMetadataAndPaths() throws {
+        try registerWorktree("real/editor")
+        try make(dirs: ["real/editor/.build"], files: ["real/editor/Package.swift"])
+        try fileManager.createSymbolicLink(at: root.appendingPathComponent("project/.hidden"),
+                                          withDestinationURL: root.appendingPathComponent("real"))
+        let registration = root.appendingPathComponent("project/.git/worktrees/editor")
+        let linkedGitFile = root.appendingPathComponent("project/.hidden/editor/.git")
+        try Data("\(linkedGitFile.path)\n".utf8)
+            .write(to: registration.appendingPathComponent("gitdir"))
+
+        // Scan only project so the real, visible directory is out of scope.
+        let config = ScanConfiguration(roots: [root.appendingPathComponent("project")],
+                                      excludedPaths: [], enabledKinds: Set(ArtifactKind.allCases))
+        XCTAssertTrue(Scanner.scan(config).isEmpty)
+
+        try fileManager.removeItem(at: root.appendingPathComponent("project/.hidden"))
+        try registerWorktree("project/.hidden/editor")
+        try make(dirs: ["project/.hidden/editor/.build"],
+                 files: ["project/.hidden/editor/Package.swift"])
+        let gitFile = root.appendingPathComponent("project/.hidden/editor/.git")
+        try fileManager.moveItem(at: gitFile, to: root.appendingPathComponent("git-pointer"))
+        try fileManager.createSymbolicLink(at: gitFile,
+                                          withDestinationURL: root.appendingPathComponent("git-pointer"))
+        XCTAssertTrue(Scanner.scan(config).isEmpty)
+    }
+
+    func testHiddenWorktreeDiscoveryNeverEntersPackagesOrArtifacts() throws {
+        for (index, ancestor) in ["bundle.app", ".git", ".Trash", "node_modules", "target"].enumerated() {
+            try registerWorktree("project/\(ancestor)/.hidden/editor", name: "editor\(index)")
+            try make(dirs: ["project/\(ancestor)/.hidden/editor/.build"],
+                     files: ["project/\(ancestor)/.hidden/editor/Package.swift"])
+        }
+        try make(dirs: [], files: ["project/Cargo.toml", "project/package.json"])
+
+        let found = scan()
+        XCTAssertFalse(found.contains { $0.path.hasSuffix("/editor/.build") })
+        XCTAssertEqual(Set(found.map(\.kind)), [.rustTarget, .nodeModules])
+    }
+
+    func testHiddenWorktreeDiscoveryHonorsDepthCap() throws {
+        try registerWorktree("project/.claude/worktrees/editor")
+        try make(dirs: ["project/.claude/worktrees/editor/.build"],
+                 files: ["project/.claude/worktrees/editor/Package.swift"])
+        let found = Scanner.scan(ScanConfiguration(
+            roots: [root], excludedPaths: [], enabledKinds: Set(ArtifactKind.allCases), maxDepth: 3))
+        XCTAssertTrue(found.isEmpty)
+
+        let worktree = root.appendingPathComponent("project/.claude/worktrees/editor")
+        let explicit = Scanner.scan(ScanConfiguration(
+            roots: [root, worktree], excludedPaths: [],
+            enabledKinds: Set(ArtifactKind.allCases), maxDepth: 0))
+        XCTAssertEqual(explicit.map(\.path), [worktree.appendingPathComponent(".build").path])
+    }
+
+    func testExplicitNestedHiddenRootIsScannedAndResultsAreUnique() throws {
+        try registerWorktree("project/.claude/worktrees/editor")
+        try make(dirs: ["project/.claude/worktrees/editor/.build", "project/visible/.build"],
+                 files: ["project/.claude/worktrees/editor/Package.swift", "project/visible/Package.swift"])
+        let worktree = root.appendingPathComponent("project/.claude/worktrees/editor")
+        let found = Scanner.scan(ScanConfiguration(
+            roots: [root, worktree, root.appendingPathComponent("project/visible")],
+            excludedPaths: [], enabledKinds: Set(ArtifactKind.allCases)))
+
+        XCTAssertEqual(found.count, 2)
+        XCTAssertEqual(Set(found.map(\.path)).count, 2)
+        XCTAssertTrue(found.contains { $0.path == worktree.appendingPathComponent(".build").path })
+    }
+
+    func testExplicitNestedHiddenRootDoesNotRequireRegistration() throws {
+        try make(dirs: ["project/.hidden/editor/.build"],
+                 files: ["project/.hidden/editor/Package.swift"])
+        let worktree = root.appendingPathComponent("project/.hidden/editor")
+        let found = Scanner.scan(ScanConfiguration(
+            roots: [root, worktree], excludedPaths: [], enabledKinds: Set(ArtifactKind.allCases)))
+
+        XCTAssertEqual(found.map(\.path), [worktree.appendingPathComponent(".build").path])
     }
 
     func testFindsDeeplyNestedAnchoredArtifacts() throws {
@@ -95,6 +279,13 @@ final class ScannerTests: XCTestCase {
     func testExcludedPathsAreSkipped() throws {
         try make(dirs: ["proj/target/debug"], files: ["proj/Cargo.toml"])
         let excluded = root.appendingPathComponent("proj/target").path
+        XCTAssertTrue(scan(exclude: [excluded]).isEmpty)
+    }
+
+    func testExcludedPathsUseTheSameCanonicalSpellingAsRoots() throws {
+        try make(dirs: ["proj/target/debug"], files: ["proj/Cargo.toml"])
+        // Foundation standardization can rewrite /private/var to its /var alias.
+        let excluded = root.appendingPathComponent("proj").standardizedFileURL.path
         XCTAssertTrue(scan(exclude: [excluded]).isEmpty)
     }
 
