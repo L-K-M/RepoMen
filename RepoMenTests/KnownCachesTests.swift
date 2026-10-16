@@ -13,6 +13,9 @@ final class KnownCachesTests: XCTestCase {
         home = URL(fileURLWithPath: NSTemporaryDirectory()).resolvingSymlinksInPath()
             .appendingPathComponent("RepoMenKnownCachesTests-\(UUID().uuidString)")
         try fileManager.createDirectory(at: home, withIntermediateDirectories: true)
+        if let path = try home.resourceValues(forKeys: [.canonicalPathKey]).canonicalPath {
+            home = URL(fileURLWithPath: path)
+        }
     }
 
     override func tearDownWithError() throws {

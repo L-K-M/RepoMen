@@ -67,6 +67,16 @@ Anchor-based rules, data-driven in `RuleCatalog` (all thresholds/names unit-test
 | `_build/`, `deps/` | `mix.exs` | Elixir build |
 | `.stack-work/` | `stack.yaml`; `dist-newstyle/` \| `*.cabal` | Haskell build |
 | `zig-cache/ .zig-cache/ zig-out/` | `build.zig` | Zig build |
+| any output/cache directory | valid regular `CACHEDIR.TAG` inside | Tagged build/cache output |
+
+Custom build scripts can put generated files in a dedicated output directory and
+mark it with a [cache directory tag](https://bford.info/cachedir/). RepoMen checks
+the exact signature in the first 43 bytes of a regular, non-symlink `CACHEDIR.TAG`
+at discovery and again before reclaiming. A filename alone is insufficient, and a
+directory containing `.git` is never accepted as a tagged cache. Tags declare the
+entire tree regenerable, so scripts must never place them in mixed directories
+containing source checkouts. An ignored `build/` beside `Package.swift` remains
+insufficient evidence; the ignore list describes version-control policy.
 
 Scanner behavior: recursive walk of the configured dev roots (defaults auto-detected
 from `~/Documents/GitHub`, `~/Developer`, `~/Projects`, …), never follows symlinks,
@@ -76,6 +86,14 @@ decision), depth-capped, and never descends into a matched artifact (the whole d
 one item). A matched dir with no anchor is left alone; unambiguous artifact names
 (`node_modules`, `__pycache__`, …) are also not descended into, while generic names
 (`build`, `target`) are, since they might be ordinary folders.
+
+Git's registered worktrees are also scanned when their paths stay inside the
+configured scan folders, including paths under hidden containers such as
+`.claude/worktrees`. The `.git` pointer and Git registration must agree in both
+directions. This follows metadata rather than walking arbitrary hidden trees, and
+retains the exclusions, depth limit, symlink, package and artifact boundaries.
+Explicit scan roots inside hidden folders are retained even alongside an ancestor
+root, and each visited directory is scanned once.
 
 ### Well-known caches (fixed locations, no deep scan)
 

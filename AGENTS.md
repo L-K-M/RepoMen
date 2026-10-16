@@ -48,6 +48,9 @@ edits needed (except when adding a Swift Package).
     it, denylist (Docker/OrbStack/Colima/Lima, Time Machine, photo libraries, Trash).
     Never weaken these to "fix" a false negative; add a better anchor instead.
   - Default reclaim method is the Trash. Permanent delete stays opt-in.
+  - Tagged build/cache directories require a regular, non-symlink `CACHEDIR.TAG`
+    with its exact signature checked during scanning and again before reclaiming.
+    Never accept the tag's filename or existence alone, or tag a source checkout.
   - Nothing is ever pre-selected, and every reclaim passes a confirmation dialog.
   - System areas are the ONLY paths outside home, and they are locked down twice:
     every path must pass `SystemAreas.validate` (a direct child of one of the two

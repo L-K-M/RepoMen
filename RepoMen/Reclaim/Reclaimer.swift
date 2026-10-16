@@ -100,6 +100,10 @@ enum Reclaimer {
             guard cacheRoots.contains(where: { PathGuards.isUnder(resolvedPath, root: $0) }) else {
                 return "not inside a known cache location"
             }
+        } else if item.kind == .taggedCache {
+            guard CacheDirectoryTag.isValid(in: item.url) else {
+                return "its cache directory tag is missing or invalid"
+            }
         } else if !item.anchorPaths.isEmpty {
             guard item.anchorPaths.contains(where: { fileManager.fileExists(atPath: $0) }) else {
                 return "its anchor is gone (project moved or deleted?)"

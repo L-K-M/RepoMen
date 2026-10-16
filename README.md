@@ -33,6 +33,11 @@ containers you still need). RepoMen sits deliberately in the middle:
 - **Project artifacts** (deep scan, anchor-based): Rust, Node/JS, SwiftPM, Xcode,
   CocoaPods, Gradle, Maven, Flutter, Python (`__pycache__`, venvs), CMake, .NET,
   Elixir, Haskell, Zig.
+- **Custom build/cache outputs:** directories explicitly marked regenerable with a
+  valid [CACHEDIR.TAG](https://bford.info/cachedir/), with the tag checked again
+  before reclaiming. An ignored folder or a generic `build/` name alone never
+  qualifies. Registered Git worktrees inside the configured scan folders are also
+  scanned, including worktrees stored under hidden directories.
 - **Developer caches:** Xcode DerivedData (per project), device support, simulator
   caches, SwiftPM cache.
 - **Package managers:** Homebrew, npm, Yarn, pnpm, pip, uv, Go, Cargo registry,

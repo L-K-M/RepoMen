@@ -65,6 +65,7 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
     case phpVendor
     case goVendor
     case terraformCache
+    case taggedCache
 
     // Developer caches (well-known locations).
     case derivedData
@@ -109,7 +110,7 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
         case .rustTarget, .nodeModules, .jsBuildOutput, .swiftPMBuild, .xcodeBuild,
              .cocoaPods, .gradleBuild, .mavenTarget, .flutterBuild, .pythonCache,
              .pythonVenv, .cmakeBuild, .dotnetBuild, .elixirBuild, .haskellBuild,
-             .zigBuild, .phpVendor, .goVendor, .terraformCache:
+             .zigBuild, .phpVendor, .goVendor, .terraformCache, .taggedCache:
             return .projects
         case .derivedData, .deviceSupport, .simulatorCache, .previewsCache,
              .swiftPMCache, .testBrowserCache, .nodeToolchainCache, .compilerCache,
@@ -148,6 +149,7 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
         case .phpVendor: return "PHP vendor"
         case .goVendor: return "Go vendor"
         case .terraformCache: return "Terraform cache"
+        case .taggedCache: return "Tagged build/cache output"
         case .derivedData: return "DerivedData"
         case .deviceSupport: return "Device support"
         case .simulatorCache: return "Simulator cache"
@@ -198,6 +200,7 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
         case .zigBuild: return "bolt"
         case .phpVendor, .goVendor: return "puzzlepiece"
         case .terraformCache: return "building.columns"
+        case .taggedCache: return "hammer"
         case .deviceSupport: return "iphone"
         case .simulatorCache: return "square.on.square"
         case .previewsCache: return "eye"
@@ -242,6 +245,7 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
         case .phpVendor: return "Recreated by composer install (some teams commit vendor/)."
         case .goVendor: return "Recreated by go mod vendor."
         case .terraformCache: return "Recreated by terraform init — workspace selection resets to default."
+        case .taggedCache: return "Declared regenerable by its owning tool through CACHEDIR.TAG."
         case .derivedData: return "Xcode rebuilds indexes and products on demand."
         case .deviceSupport: return "Re-copied from the device on next connect."
         case .simulatorCache: return "Recreated by the simulator on demand."
