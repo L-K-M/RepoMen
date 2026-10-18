@@ -48,10 +48,19 @@ enum KnownCaches {
         Spec(.nodeToolchainCache, "Electron downloads", "Library/Caches/electron"),
         Spec(.nodeToolchainCache, "electron-builder cache", "Library/Caches/electron-builder"),
         Spec(.nodeToolchainCache, "node-gyp headers", "Library/Caches/node-gyp"),
+        Spec(.appCache, "OpenCode cache", ".cache/opencode",
+             appName: "OpenCode", bundleIDs: ["ai.opencode.desktop"]),
         Spec(.compilerCache, "ccache", "Library/Caches/ccache"),
         Spec(.compilerCache, "ccache (legacy location)", ".ccache"),
         Spec(.compilerCache, "sccache", "Library/Caches/Mozilla.sccache"),
-        Spec(.ideCache, "JetBrains caches", "Library/Caches/JetBrains", expandChildren: true),
+        Spec(.appCache, "Slack cache", "Library/Application Support/Slack/Cache",
+             appName: "Slack", bundleIDs: ["com.tinyspeck.slackmacgap"]),
+        Spec(.appCache, "Slack code cache", "Library/Application Support/Slack/Code Cache",
+             appName: "Slack", bundleIDs: ["com.tinyspeck.slackmacgap"]),
+        Spec(.appCache, "Claude cache", "Library/Application Support/Claude/Cache",
+             appName: "Claude", bundleIDs: ["com.anthropic.claudefordesktop"]),
+        Spec(.appCache, "Claude code cache", "Library/Application Support/Claude/Code Cache",
+             appName: "Claude", bundleIDs: ["com.anthropic.claudefordesktop"]),
         Spec(.ideCache, "VS Code cache", "Library/Application Support/Code/Cache",
              appName: "VS Code", bundleIDs: ["com.microsoft.VSCode"]),
         Spec(.ideCache, "VS Code code cache", "Library/Application Support/Code/Code Cache",
@@ -63,17 +72,19 @@ enum KnownCaches {
         Spec(.homebrewCache, "Homebrew downloads", "Library/Caches/Homebrew/downloads"),
         Spec(.homebrewCache, "Homebrew casks", "Library/Caches/Homebrew/Cask"),
         Spec(.npmCache, "npm cache", ".npm/_cacache"),
+        Spec(.npmCache, "npx cache", ".npm/_npx"),
         Spec(.yarnCache, "Yarn cache", "Library/Caches/Yarn"),
         Spec(.yarnCache, "Yarn Berry cache", ".yarn/berry/cache"),
         Spec(.pnpmStore, "pnpm store", "Library/pnpm/store"),
         Spec(.pnpmStore, "pnpm store (legacy location)", ".pnpm-store"),
+        Spec(.pnpmStore, "pnpm store (XDG location)", ".local/share/pnpm/store"),
         Spec(.pipCache, "pip cache", "Library/Caches/pip"),
-        Spec(.uvCache, "uv cache", "Library/Caches/uv"),
         Spec(.goBuildCache, "Go build cache", "Library/Caches/go-build"),
         Spec(.cargoRegistryCache, "Cargo registry cache", ".cargo/registry/cache"),
         Spec(.cargoRegistryCache, "Cargo registry sources", ".cargo/registry/src"),
         Spec(.cargoRegistryCache, "Cargo git checkouts", ".cargo/git/checkouts"),
         Spec(.gradleUserCache, "Gradle caches", ".gradle/caches"),
+        Spec(.gradleUserCache, "Gradle wrapper distributions", ".gradle/wrapper/dists"),
         Spec(.mavenLocalRepo, "Maven local repository", ".m2/repository"),
         Spec(.cocoaPodsCache, "CocoaPods cache", "Library/Caches/CocoaPods"),
         Spec(.denoCache, "Deno cache", "Library/Caches/deno"),
@@ -130,7 +141,12 @@ enum KnownCaches {
                     cacheDirNames: ["Cache", "Code Cache"], bundleIDs: ["company.thebrowser.Browser"]),
         BrowserSpec(name: "Firefox", cachesSubpath: "Firefox/Profiles",
                     cacheDirNames: ["cache2"], bundleIDs: ["org.mozilla.firefox"]),
+        BrowserSpec(name: "Zen", cachesSubpath: "zen/Profiles",
+                    cacheDirNames: ["cache2"], bundleIDs: ["app.zen-browser.zen"]),
     ]
+
+    private static let jetBrainsRelativePath = "Library/Caches/JetBrains"
+    private static let jetBrainsCacheNames = ["index", "vcs-log"]
 
     /// Enumerates every known-cache item that currently exists. `isRunning` answers
     /// whether an app with the given bundle id is open (injected so tests need no
@@ -161,6 +177,17 @@ enum KnownCaches {
             } else {
                 append(&items, label: spec.label, kind: spec.kind, path: root.path,
                        excludedPaths: excludedPaths, warning: warning)
+            }
+        }
+
+        if enabledKinds.contains(.ideCache) {
+            let warning = ["com.jetbrains.intellij", "com.jetbrains.intellij.ce"].contains(where: isRunning)
+                ? "JetBrains IDE is running — quit it before reclaiming" : nil
+            for cache in jetBrainsCacheDirectories(home: home, fileManager: fileManager) {
+                let version = cache.deletingLastPathComponent().lastPathComponent
+                append(&items, label: "JetBrains · \(version) · \(cache.lastPathComponent)",
+                       kind: .ideCache, path: cache.path, excludedPaths: excludedPaths,
+                       warning: warning)
             }
         }
 
@@ -208,13 +235,33 @@ enum KnownCaches {
 
     /// Roots a known-cache item must live under to be reclaimable — the `Reclaimer`'s
     /// re-verification that a stored path really came from this catalog. Deliberately
-    /// the concrete catalog entries (every spec path plus every browser vendor dir),
+    /// the concrete catalog entries (every spec path plus every browser vendor dir
+    /// and the existing, allowlisted JetBrains cache leaves),
     /// NOT the ~/Library/Caches umbrella: the guards must never vouch for an
     /// arbitrary app's cache directory — or the umbrella itself.
     static func allowedRoots(home: URL) -> [String] {
         var roots = specs.map(\.relativePath)
         roots += browsers.map { "Library/Caches/" + $0.cachesSubpath }
         return roots.map { home.appendingPathComponent($0).path }
+            + jetBrainsCacheDirectories(home: home, fileManager: .default).map(\.path)
+    }
+
+    /// JetBrains keeps LocalHistory and browser state beside its caches. Recheck
+    /// these exact leaves when reclaiming rather than trusting the version parent.
+    private static func jetBrainsCacheDirectories(home: URL, fileManager: FileManager) -> [URL] {
+        let root = home.appendingPathComponent(jetBrainsRelativePath)
+        guard isNonSymlinkDirectory(root, fileManager) else { return [] }
+        let versions = (try? fileManager.contentsOfDirectory(
+            at: root, includingPropertiesForKeys: nil, options: [])) ?? []
+        return versions.filter { isNonSymlinkDirectory($0, fileManager) }.flatMap { version in
+            jetBrainsCacheNames.map { version.appendingPathComponent($0) }
+                .filter { isNonSymlinkDirectory($0, fileManager) }
+        }
+    }
+
+    private static func isNonSymlinkDirectory(_ url: URL, _ fileManager: FileManager) -> Bool {
+        guard let attributes = try? fileManager.attributesOfItem(atPath: url.path) else { return false }
+        return attributes[.type] as? FileAttributeType == .typeDirectory
     }
 
     private static func append(_ items: inout [CleanableItem], label: String,
