@@ -9,7 +9,7 @@ more.
 > [!IMPORTANT]
 > LLM disclosure: This codebase was written with substantial help from large language models: AI coding agents working from the [`AGENTS.md`](AGENTS.md) brief in this repo.
 
-**Version:** <!-- version -->0.2.0<!-- /version -->
+**Version:** <!-- version -->1.9.2<!-- /version -->
 
 ## Why
 
