@@ -6,6 +6,11 @@ final class KnownCachesTests: XCTestCase {
 
     private var home: URL!
     private let fileManager = FileManager.default
+    private let codexCrashpadRoots = [
+        "Library/Application Support/Codex/Crashpad",
+        "Library/Application Support/com.openai.codex/web/Crashpad",
+    ]
+    private let crashReportBuckets = ["pending", "new", "completed", "attachments"]
 
     override func setUpWithError() throws {
         // Resolved for the same reason as ScannerTests: the catalog reports canonical
@@ -106,6 +111,50 @@ final class KnownCachesTests: XCTestCase {
         let found = items(isRunning: { $0 == "com.microsoft.VSCode" })
         XCTAssertEqual(found.first?.warning, "VS Code is running — quit it before reclaiming")
         XCTAssertNil(items().first?.warning)
+    }
+
+    func testCodexCrashReportsOnlyOfferReportBuckets() throws {
+        let reportPaths = codexCrashpadRoots.flatMap { root in
+            crashReportBuckets.map { "\(root)/\($0)" }
+        }
+        try make(reportPaths)
+        try make(codexCrashpadRoots.map { "\($0)/metadata" } + [
+            "Library/Application Support/Codex/Local Storage",
+            "Library/Application Support/com.openai.codex/web/Session Storage",
+            "Library/Application Support/OtherApp/Crashpad/pending",
+        ])
+        for path in reportPaths {
+            try Data("dump".utf8).write(to: home.appendingPathComponent("\(path)/report.dmp"))
+            try Data("{}".utf8).write(to: home.appendingPathComponent("\(path)/report_sidecar.json"))
+        }
+
+        let found = items()
+        XCTAssertEqual(found.count, reportPaths.count)
+        XCTAssertEqual(Set(found.map(\.path)), Set(reportPaths.map {
+            home.appendingPathComponent($0).path
+        }))
+        XCTAssertTrue(found.allSatisfy { $0.kind == .crashReports && $0.isKnownCache })
+        XCTAssertTrue(found.allSatisfy { $0.category == .developer && $0.warning == nil })
+    }
+
+    func testCodexCrashReportsRespectRuleAndExclusions() throws {
+        let paths = codexCrashpadRoots.map { "\($0)/pending" }
+        try make(paths)
+        XCTAssertEqual(items(enabled: [.crashReports]).count, paths.count)
+        XCTAssertTrue(items(enabled: Set(ArtifactKind.allCases).subtracting([.crashReports])).isEmpty)
+
+        let excluded = home.appendingPathComponent(paths[0]).path
+        XCTAssertEqual(items(excluded: [excluded], enabled: [.crashReports]).map(\.path),
+                       [home.appendingPathComponent(paths[1]).path])
+    }
+
+    func testRunningCodexGetsCrashReportWarning() throws {
+        try make(codexCrashpadRoots.map { "\($0)/pending" })
+        let found = items(isRunning: { $0 == "com.openai.codex" })
+        XCTAssertEqual(found.count, codexCrashpadRoots.count)
+        XCTAssertTrue(found.allSatisfy {
+            $0.warning == "Codex/ChatGPT is running — quit it before reclaiming"
+        })
     }
 
     func testArcUserDataProfileCaches() throws {

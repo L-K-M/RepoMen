@@ -107,7 +107,19 @@ root, and each visited directory is scanned once.
   registry cache, CocoaPods, Gradle `~/.gradle/caches`, Maven `~/.m2/repository` — the
   last few flagged "slow to re-download" so you think twice.
 
-Everything here is a cache by contract: the owning tool rebuilds it on demand.
+Cache entries are rebuilt by their owning tool on demand.
+
+Codex/ChatGPT's disposable Crashpad diagnostics are also cataloged, following
+[openai/codex#25921](https://github.com/openai/codex/issues/25921). Only `pending`,
+`new`, `completed`, and `attachments` under these two locations are offered:
+
+- `~/Library/Application Support/Codex/Crashpad`
+- `~/Library/Application Support/com.openai.codex/web/Crashpad`
+
+Each report bucket is one item, regardless of file count. The database root,
+metadata, and surrounding app state stay outside the allowed reclaim roots.
+Items warn while `com.openai.codex` runs. Past reports cannot be regenerated;
+cleanup does not fix a crash loop, so reports may accumulate again.
 
 ### System areas (root-owned, admin-gated)
 

@@ -2,5 +2,5 @@
 
 ## Unreleased
 
-- No changes recorded yet. Earlier history lives in the commit log and any
-  GitHub releases; future changes will be noted here.
+- Detect Codex/ChatGPT Crashpad reports in current and legacy locations, with
+  running-app warnings and report-bucket-only reclaim boundaries.
