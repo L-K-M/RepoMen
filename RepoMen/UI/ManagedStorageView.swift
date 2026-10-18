@@ -3,13 +3,24 @@ import SwiftUI
 
 /// Read-only measurements and instructions for storage managed by its owning tool.
 struct ManagedStorageView: View {
-    @StateObject private var storage = ManagedStorageModel()
+    @StateObject private var storage: ManagedStorageModel
+
+    @MainActor
+    init(storage: ManagedStorageModel? = nil) {
+        _storage = StateObject(wrappedValue: storage ?? ManagedStorageModel())
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            cardsList
+        // Keep the catalog's ideal height out of the split view's minimum size.
+        // The cards can grow inside their scroll viewport without displacing
+        // the header or the sidebar, and instructions remain fully readable.
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                header
+                Divider()
+                cardsList
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .onDisappear { storage.cancel() }
         .alert(
