@@ -7,6 +7,10 @@ final class ReclaimerTests: XCTestCase {
 
     private var home: URL!
     private let fileManager = FileManager.default
+    private let codexCrashpadRoots = [
+        "Library/Application Support/Codex/Crashpad",
+        "Library/Application Support/com.openai.codex/web/Crashpad",
+    ]
 
     override func setUpWithError() throws {
         home = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -75,6 +79,72 @@ final class ReclaimerTests: XCTestCase {
         XCTAssertNotNil(outcomes.first { $0.item.path == bad.path }?.failure,
                         "a known-cache flag on a non-catalog path must not delete it")
         XCTAssertTrue(fileManager.fileExists(atPath: stray.path))
+    }
+
+    func testReclaimsCodexReportsAndPreservesAppState() throws {
+        var preserved: [URL] = []
+        for root in codexCrashpadRoots {
+            let database = home.appendingPathComponent(root)
+            for bucket in ["pending", "new", "completed", "attachments"] {
+                let directory = database.appendingPathComponent(bucket)
+                try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+                try Data("dump".utf8).write(to: directory.appendingPathComponent("report.dmp"))
+                try Data("{}".utf8).write(to: directory.appendingPathComponent("report_sidecar.json"))
+            }
+            let settings = database.appendingPathComponent("settings.dat")
+            let appState = database.deletingLastPathComponent().appendingPathComponent("Preferences")
+            try Data("keep".utf8).write(to: settings)
+            try Data("keep".utf8).write(to: appState)
+            preserved += [settings, appState]
+        }
+
+        let found = KnownCaches.items(home: home, excludedPaths: [], enabledKinds: [.crashReports])
+        XCTAssertEqual(found.count, 8)
+        let outcomes = Reclaimer.reclaim(found, method: .delete, home: home)
+        XCTAssertEqual(outcomes.count, found.count)
+        XCTAssertTrue(outcomes.allSatisfy { $0.failure == nil })
+        XCTAssertTrue(found.allSatisfy { !fileManager.fileExists(atPath: $0.path) })
+        for file in preserved {
+            XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), "keep")
+        }
+    }
+
+    func testRefusesCodexAppStateAndCrashpadDatabase() throws {
+        for root in codexCrashpadRoots {
+            let database = home.appendingPathComponent(root)
+            let refused = [database, database.deletingLastPathComponent(),
+                           database.appendingPathComponent("metadata"),
+                           database.appendingPathComponent("pending-backup"),
+                           database.deletingLastPathComponent().appendingPathComponent("Local Storage")]
+            for directory in refused {
+                try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+                let item = CleanableItem(label: "impostor", kind: .crashReports,
+                                         path: directory.path, anchorPaths: [], isKnownCache: true)
+                let outcomes = Reclaimer.reclaim([item], method: .delete, home: home)
+                XCTAssertEqual(outcomes.count, 1)
+                XCTAssertNotNil(outcomes.first?.failure, directory.path)
+                XCTAssertTrue(fileManager.fileExists(atPath: directory.path))
+            }
+        }
+    }
+
+    func testRefusesRedirectedCodexCrashReports() throws {
+        let database = home.appendingPathComponent(codexCrashpadRoots[0])
+        try fileManager.createDirectory(at: database.appendingPathComponent("pending"),
+                                        withIntermediateDirectories: true)
+        let found = KnownCaches.items(home: home, excludedPaths: [], enabledKinds: [.crashReports])
+        XCTAssertEqual(found.count, 1)
+
+        let appState = database.deletingLastPathComponent().appendingPathComponent("Local Storage")
+        let preserved = appState.appendingPathComponent("pending")
+        try fileManager.createDirectory(at: preserved, withIntermediateDirectories: true)
+        try fileManager.removeItem(at: database)
+        try fileManager.createSymbolicLink(at: database, withDestinationURL: appState)
+
+        let outcomes = Reclaimer.reclaim(found, method: .delete, home: home)
+        XCTAssertEqual(outcomes.count, 1)
+        XCTAssertNotNil(outcomes.first?.failure)
+        XCTAssertTrue(fileManager.fileExists(atPath: preserved.path))
     }
 
     func testAnchorlessItemFallsBackToUnambiguousName() throws {

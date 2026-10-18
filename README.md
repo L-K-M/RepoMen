@@ -40,6 +40,9 @@ containers you still need). RepoMen sits deliberately in the middle:
   scanned, including worktrees stored under hidden directories.
 - **Developer caches:** Xcode DerivedData (per project), device support, simulator
   caches, SwiftPM cache.
+- **Codex/ChatGPT crash reports:** Crashpad report buckets in both current and
+  legacy app-data locations, with a warning while the app runs. Past reports
+  cannot be regenerated, and cleanup does not fix an active crash loop.
 - **Package managers:** Homebrew, npm, Yarn, pnpm, pip, uv, Go, Cargo registry,
   Gradle, Maven, CocoaPods — the expensive-to-refill ones are labeled "slow to
   rebuild".

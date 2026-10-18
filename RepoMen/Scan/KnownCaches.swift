@@ -1,8 +1,8 @@
 import Foundation
 
-/// The fixed, well-known cache locations RepoMen offers without any deep scanning.
-/// Everything here is a cache *by the owning tool's contract* — if a location's tool
-/// doesn't rebuild it on demand, it doesn't belong in this catalog.
+/// Fixed caches and disposable crash-report locations offered without deep scanning.
+/// Cache entries must be rebuilt by their owner; diagnostics must stay confined to
+/// explicitly cataloged report directories.
 ///
 /// Docker/OrbStack/VM disk images are deliberately absent (and hard-blocked in
 /// `PathGuards`): stopped containers look like debris and aren't. See PLAN.md.
@@ -81,7 +81,21 @@ enum KnownCaches {
         Spec(.composerCache, "Composer cache", ".composer/cache"),
         Spec(.poetryCache, "Poetry cache", "Library/Caches/pypoetry"),
         Spec(.pubCache, "Dart pub cache", ".pub-cache"),
-    ]
+    ] + codexCrashReportSpecs
+
+    // Both layouts accumulate reports (openai/codex#25921). Keep database metadata
+    // and app state outside the reclaimable roots.
+    private static let codexCrashReportSpecs: [Spec] = [
+        (label: "Codex/ChatGPT", path: "Library/Application Support/Codex/Crashpad"),
+        (label: "Codex/ChatGPT (legacy browser)",
+         path: "Library/Application Support/com.openai.codex/web/Crashpad"),
+    ].flatMap { location in
+        ["pending", "new", "completed", "attachments"].map { bucket in
+            Spec(.crashReports, "\(location.label) crash reports · \(bucket)",
+                 "\(location.path)/\(bucket)",
+                 appName: "Codex/ChatGPT", bundleIDs: ["com.openai.codex"])
+        }
+    }
 
     /// Chromium-family (+ Firefox) per-profile caches. Only the `Cache`/`Code Cache`
     /// subdirectories are offered — never profile data (bookmarks, cookies, sessions).

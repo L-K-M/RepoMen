@@ -41,9 +41,8 @@ enum ArtifactCategory: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// Every kind of reclaimable thing RepoMen knows about. Each kind carries the one
-/// sentence that justifies deleting it — if a kind can't state how the artifact comes
-/// back, it doesn't belong in this enum (see PLAN.md's trust model).
+/// Every reclaimable kind explains its regeneration or disposable diagnostic role.
+/// See PLAN.md's trust model.
 enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
     // Project artifacts (anchor-based deep scan).
     case rustTarget
@@ -77,6 +76,7 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
     case nodeToolchainCache
     case compilerCache
     case ideCache
+    case crashReports
 
     // Package-manager caches.
     case homebrewCache
@@ -114,7 +114,7 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
             return .projects
         case .derivedData, .deviceSupport, .simulatorCache, .previewsCache,
              .swiftPMCache, .testBrowserCache, .nodeToolchainCache, .compilerCache,
-             .ideCache:
+             .ideCache, .crashReports:
             return .developer
         case .homebrewCache, .npmCache, .yarnCache, .pnpmStore, .pipCache, .uvCache,
              .goBuildCache, .cargoRegistryCache, .gradleUserCache, .mavenLocalRepo,
@@ -159,6 +159,7 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
         case .nodeToolchainCache: return "Node toolchain"
         case .compilerCache: return "Compiler cache"
         case .ideCache: return "IDE caches"
+        case .crashReports: return "Crash reports"
         case .homebrewCache: return "Homebrew cache"
         case .npmCache: return "npm cache"
         case .yarnCache: return "Yarn cache"
@@ -208,6 +209,7 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
         case .nodeToolchainCache: return "hexagon"
         case .compilerCache: return "cpu"
         case .ideCache: return "macwindow"
+        case .crashReports: return "doc.text"
         case .homebrewCache: return "mug"
         case .npmCache, .yarnCache, .goBuildCache: return "shippingbox"
         case .pnpmStore, .cargoRegistryCache: return "tray.full"
@@ -223,7 +225,7 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
         }
     }
 
-    /// One sentence shown in the UI explaining how this comes back after deletion.
+    /// Explains regeneration or diagnostic loss before reclaiming.
     var regenerationHint: String {
         switch self {
         case .rustTarget: return "Recreated by the next cargo build."
@@ -255,6 +257,7 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
         case .nodeToolchainCache: return "Re-downloaded on the next build or install."
         case .compilerCache: return "Rebuilt transparently — the next builds recompile from scratch."
         case .ideCache: return "The IDE re-indexes on next launch — can be slow for big projects."
+        case .crashReports: return "Past crash reports cannot be regenerated. A crash loop can refill these folders after cleanup."
         case .homebrewCache: return "Downloads are re-fetched by brew on demand."
         case .npmCache, .yarnCache, .pipCache, .uvCache, .cargoRegistryCache,
              .cocoaPodsCache:
