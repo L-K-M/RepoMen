@@ -28,7 +28,7 @@ jobs:
     runs-on: macos-14
     timeout-minutes: 30   # a wedged build must not burn hours of runner time
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
