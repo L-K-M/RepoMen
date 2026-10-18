@@ -33,6 +33,21 @@ enum PathGuards {
     private static let foldedDenylistComponents = Set(denylistComponents.map { $0.lowercased() })
     private static let foldedDenylistSuffixes = denylistSuffixes.map { $0.lowercased() }
 
+    /// These tools coordinate cleanup with their own databases, locks or device
+    /// state. A valid cache tag must not bypass their cleanup requirements.
+    private static let toolManagedRoots = [
+        ".cache/uv", "library/caches/uv", "library/android/sdk", ".android/avd",
+    ]
+
+    static func requiresOwnerCleanup(path: String, home: String) -> Bool {
+        let prefix = home.hasSuffix("/") ? home : home + "/"
+        guard path.hasPrefix(prefix) else { return false }
+        let relative = String(path.dropFirst(prefix.count)).lowercased()
+        return toolManagedRoots.contains {
+            isUnder(relative, root: $0) || isUnder($0, root: relative)
+        }
+    }
+
     /// Why a path was refused; shown to the user verbatim.
     struct Violation: Error, Equatable, CustomStringConvertible {
         let reason: String
@@ -64,6 +79,9 @@ enum PathGuards {
         let depthBelowHome = components.count - home.split(separator: "/").count
         guard depthBelowHome >= 2 else {
             return Violation(reason: "a top-level home folder — too broad to reclaim")
+        }
+        if requiresOwnerCleanup(path: path, home: home) {
+            return Violation(reason: "managed by its owning tool; use Managed cleanup")
         }
         for component in components {
             let folded = component.lowercased()

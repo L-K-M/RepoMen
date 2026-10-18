@@ -6,6 +6,7 @@ enum ArtifactCategory: String, CaseIterable, Identifiable, Sendable {
     case developer
     case packageManagers
     case browsers
+    case applications
     case system
 
     var id: String { rawValue }
@@ -16,6 +17,7 @@ enum ArtifactCategory: String, CaseIterable, Identifiable, Sendable {
         case .developer: return "Developer caches"
         case .packageManagers: return "Package managers"
         case .browsers: return "Browser caches"
+        case .applications: return "Application caches"
         case .system: return "System (root)"
         }
     }
@@ -26,6 +28,7 @@ enum ArtifactCategory: String, CaseIterable, Identifiable, Sendable {
         case .developer: return "wrench.and.screwdriver"
         case .packageManagers: return "shippingbox"
         case .browsers: return "globe"
+        case .applications: return "app"
         case .system: return "lock.shield"
         }
     }
@@ -36,6 +39,7 @@ enum ArtifactCategory: String, CaseIterable, Identifiable, Sendable {
         case .developer: return .blue
         case .packageManagers: return .brown
         case .browsers: return .teal
+        case .applications: return .purple
         case .system: return .red
         }
     }
@@ -98,6 +102,7 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
 
     // Browsers.
     case browserCache
+    case appCache
 
     // Root-owned system areas (admin-gated scan — see SystemAreas).
     case systemLogs
@@ -123,6 +128,8 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
             return .packageManagers
         case .browserCache:
             return .browsers
+        case .appCache:
+            return .applications
         case .systemLogs, .systemCaches:
             return .system
         }
@@ -177,6 +184,7 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
         case .poetryCache: return "Poetry cache"
         case .pubCache: return "Dart pub cache"
         case .browserCache: return "Browser cache"
+        case .appCache: return "Application cache"
         case .systemLogs: return "System logs"
         case .systemCaches: return "System caches"
         }
@@ -220,6 +228,7 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
         case .poetryCache: return "text.book.closed"
         case .pubCache: return "wineglass"
         case .browserCache: return "globe"
+        case .appCache: return "app"
         case .systemLogs: return "scroll"
         case .systemCaches: return "cylinder.split.1x2"
         }
@@ -259,7 +268,8 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
         case .ideCache: return "The IDE re-indexes on next launch — can be slow for big projects."
         case .crashReports: return "Past crash reports cannot be regenerated. A crash loop can refill these folders after cleanup."
         case .homebrewCache: return "Downloads are re-fetched by brew on demand."
-        case .npmCache, .yarnCache, .pipCache, .uvCache, .cargoRegistryCache,
+        case .uvCache: return "Use uv cache prune or uv cache clean in Managed cleanup; never remove cache entries directly."
+        case .npmCache, .yarnCache, .pipCache, .cargoRegistryCache,
              .cocoaPodsCache:
             return "Re-downloaded on the next install."
         case .pnpmStore: return "Re-downloaded on the next install — projects share it via links, so freed space may be less than shown."
@@ -272,6 +282,7 @@ enum ArtifactKind: String, CaseIterable, Codable, Identifiable, Sendable {
         case .poetryCache: return "Re-downloaded on the next poetry install."
         case .pubCache: return "Re-downloaded by dart/flutter pub get — every project refills it."
         case .browserCache: return "The browser refills its cache while browsing."
+        case .appCache: return "Rebuilt by the owning app after restart. Downloads and initial loading may take longer."
         case .systemLogs: return "Diagnostic logs nothing reads back — the daemon (e.g. rtcreportingd) starts a fresh file when it next logs."
         case .systemCaches: return "Rebuilt on demand by the owning system service."
         }

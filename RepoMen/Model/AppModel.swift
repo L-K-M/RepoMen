@@ -9,6 +9,8 @@ enum SidebarEntry: Hashable {
     /// Time Machine local snapshots — not paths, so the detail pane swaps the
     /// table for `SnapshotsView` while this is selected.
     case snapshots
+    /// Read-only footprints and cleanup instructions for owner-managed storage.
+    case managedStorage
 }
 
 /// Result of a reclaim run, presented as an alert.
@@ -154,7 +156,7 @@ final class AppModel: ObservableObject {
         switch sidebarSelection {
         case .category(let category)?:
             filtered = filtered.filter { $0.category == category }
-        case .snapshots?:
+        case .snapshots?, .managedStorage?:
             filtered = []   // the snapshots pane replaces the table entirely
         default:
             break
