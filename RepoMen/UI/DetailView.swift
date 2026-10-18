@@ -10,6 +10,7 @@ struct DetailView: View {
 
     private var showingSnapshots: Bool { model.sidebarSelection == .snapshots }
     private var showingManagedStorage: Bool { model.sidebarSelection == .managedStorage }
+    private var showingSystemAreas: Bool { model.sidebarSelection == .category(.system) }
 
     var body: some View {
         Group {
@@ -19,15 +20,21 @@ struct DetailView: View {
                 // Snapshots are not paths: their own pane replaces the table, its
                 // footer, and the empty state while the sidebar row is selected.
                 SnapshotsView()
-            } else if model.items.isEmpty && !model.isBusy && !model.isSystemScanning {
+            } else if model.items.isEmpty && !model.isBusy && !model.isSystemScanning && !showingSystemAreas {
                 // A running system scan counts as busy here too: the footer (which
                 // carries its progress line and Stop button) lives on the table branch.
+                // The System (root) category never shows the generic empty state;
+                // it uses the table branch with the scan header instead.
                 EmptyStateView()
             } else {
                 VStack(spacing: 0) {
+                    if showingSystemAreas {
+                        SystemScanHeaderView()
+                        Divider()
+                    }
                     ZStack {
                         ItemTable()
-                        if model.visibleItems.isEmpty && !model.items.isEmpty {
+                        if model.visibleItems.isEmpty && (showingSystemAreas || !model.items.isEmpty) {
                             noMatchesPlaceholder
                         }
                     }
@@ -165,9 +172,7 @@ struct DetailView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 28))
                 .foregroundStyle(.tertiary)
-            Text(model.searchText.isEmpty
-                 ? emptyCategoryText
-                 : "No items match “\(model.searchText)”")
+            Text(noMatchesText)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -179,6 +184,20 @@ struct DetailView: View {
             return "No \(category.label.lowercased()) found — nothing to repossess here."
         }
         return "Nothing found."
+    }
+
+    /// Text shown in the placeholder overlay when the visible item list is empty.
+    /// For the System (root) category, uses neutral copy or scanning status.
+    private var noMatchesText: String {
+        if !model.searchText.isEmpty {
+            return "No items match “\(model.searchText)”"
+        }
+        if showingSystemAreas {
+            return model.isSystemScanning
+                ? "Scanning system areas…"
+                : "Use Scan System Areas to check root-owned logs and caches."
+        }
+        return emptyCategoryText
     }
 
     // MARK: Footer

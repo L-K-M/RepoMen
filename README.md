@@ -99,6 +99,8 @@ protected folder (e.g. `~/Documents`).
 (RTCReporting logs and friends). macOS asks for your administrator password once
 per scan and once per reclaim; checked system items are deleted permanently (the
 Trash can't take root-owned files) after being re-verified as root.
+You can also open **System (root)** in the sidebar and click **Scan System Areas…**
+in that pane. Selecting the category alone does not request administrator access.
 
 **Time Machine → Local snapshots** in the sidebar (⌘⇧S, or the clock button in the
 toolbar) shows the Time Machine local snapshots of your disk. Use **Release…** to have
