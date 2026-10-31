@@ -25,7 +25,7 @@ env:
 jobs:
   build-test:
     name: Build & Test
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 30   # a wedged build must not burn hours of runner time
     steps:
       - uses: actions/checkout@v7
