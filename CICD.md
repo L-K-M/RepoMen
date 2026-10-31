@@ -1,6 +1,6 @@
 # CI/CD
 
-Two GitHub Actions workflows, both on `macos-14` with Xcode pinned to **16.2**. RepoMen
+Two GitHub Actions workflows, both on `macos-15` with Xcode pinned to **16.2**. RepoMen
 has no external package dependencies; nothing is resolved or vendored.
 
 ## CI — `.github/workflows/ci.yml`
