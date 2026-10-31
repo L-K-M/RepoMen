@@ -100,12 +100,19 @@ root, and each visited directory is scanned once.
 - **Xcode:** DerivedData (one item per project), iOS/watchOS/tvOS DeviceSupport (per
   OS version), CoreSimulator caches, SwiftPM cache.
 - **Homebrew:** `~/Library/Caches/Homebrew/downloads` + `…/Cask`.
-- **Browsers (Chromium family + Firefox):** per-profile `Cache` / `Code Cache` dirs
+- **Browsers (Chromium family + Firefox/Zen):** per-profile `Cache` / `Code Cache` dirs
   (e.g. `…/Google/Chrome/Profile 14/Cache`). Items carry a "browser is running" warning
   when the matching app is open.
-- **Package managers:** npm `_cacache`, yarn, pnpm store, pip, uv, go-build, Cargo
-  registry cache, CocoaPods, Gradle `~/.gradle/caches`, Maven `~/.m2/repository` — the
+- **Package managers:** npm `_cacache` and `_npx`, yarn, pnpm stores (including
+  `~/.local/share/pnpm/store`), pip, go-build, Cargo registry cache, CocoaPods,
+  Gradle `~/.gradle/caches` and `~/.gradle/wrapper/dists`, Maven `~/.m2/repository`; the
   last few flagged "slow to re-download" so you think twice.
+- **Application caches:** only Slack/Claude `Cache` and `Code Cache`, and
+  `~/.cache/opencode`. App databases, cookies and session storage remain outside
+  the catalog.
+- **JetBrains:** only existing `index` and `vcs-log` leaves in each version's
+  system directory. Discovery and reclaim verification reject the version parent,
+  `LocalHistory`, embedded-browser state and symlinked roots/versions/leaves.
 
 Cache entries are rebuilt by their owning tool on demand.
 
@@ -121,9 +128,30 @@ metadata, and surrounding app state stay outside the allowed reclaim roots.
 Items warn while `com.openai.codex` runs. Past reports cannot be regenerated;
 cleanup does not fix a crash loop, so reports may accumulate again.
 
+### Owner-managed storage (read-only)
+
+The Managed cleanup pane measures Android SDKs/AVDs, Android Studio system
+directories, uv caches, JetBrains diagnostic logs, Arq cache/logs and Sparkle
+updater staging. It shows native cleanup instructions and source links. No entry
+is a `CleanableItem`: it cannot enter reclaim totals, selection or watch mode.
+Measurement is explicit, unprivileged and cancellable; unreadable entries produce
+lower bounds or errors. Custom SDK/AVD/uv locations are not automatically inferred.
+
+Android SDK Manager owns package dependencies; Device Manager owns virtual device
+data. uv's own cleanup commands coordinate locks, so home-default uv roots are
+guarded even when tagged or supplied as explicit scan roots. Arq's native Clear
+Cache rebuilds backup-plan metadata with potentially substantial destination
+traffic and does not prune logs. Arq logs have no verified deletion contract;
+the pane directs you to Arq Support. Sparkle staging may belong to a pending
+installer; age alone does not prove abandonment.
+
+Arq's fixed `/Library/Application Support/ArqAgent` locations are a read-only
+exception to home-only discovery. They do not extend `SystemAreas` or permit
+privileged deletion, and no cleanup command is executed by this pane.
+
 ### System areas (root-owned, admin-gated)
 
-The one place RepoMen looks outside your home folder — because a real failure mode
+The only reclaimable paths outside your home folder, because a real failure mode
 lives there: a busy `rtcreportingd` (typically kept busy by Dropbox's FileProvider
 integration) fills `/private/var/root/Library/Logs/RTCReporting` with tens of
 gigabytes of message logs, plus multi-GB event caches under root's

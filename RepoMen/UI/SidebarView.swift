@@ -18,6 +18,18 @@ struct SidebarView: View {
             Section("Time Machine") {
                 snapshotsRow
             }
+
+            Section("Managed cleanup") {
+                HStack {
+                    Label {
+                        Text("Managed cleanup")
+                    } icon: {
+                        Image(systemName: "shippingbox.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .tag(SidebarEntry.managedStorage)
+            }
         }
         .listStyle(.sidebar)
     }

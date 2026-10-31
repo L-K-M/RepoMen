@@ -12,6 +12,8 @@ enum DirectorySizer {
         /// False when the walk was aborted by cancellation — the counts are partial
         /// and must never be presented as a measured size.
         var isComplete: Bool = true
+        /// Read failures make byte counts a lower bound rather than a full size.
+        var unreadableEntries = 0
     }
 
     static func measure(_ url: URL, fileManager: FileManager = .default) -> Measurement {
@@ -25,7 +27,13 @@ enum DirectorySizer {
         }
         guard let enumerator = fileManager.enumerator(
             at: url, includingPropertiesForKeys: Array(keys),
-            options: [], errorHandler: { _, _ in true }) else { return measurement }
+            options: [], errorHandler: { _, _ in
+                measurement.unreadableEntries += 1
+                return true
+            }) else {
+            measurement.unreadableEntries += 1
+            return measurement
+        }
 
         // Hardlinked files (pnpm-style stores, cargo caches) are enumerated once per
         // link; count each underlying file once so the size reflects what deleting the
@@ -38,7 +46,10 @@ enum DirectorySizer {
                 measurement.isComplete = false
                 break
             }
-            guard let values = try? entry.resourceValues(forKeys: keys) else { continue }
+            guard let values = try? entry.resourceValues(forKeys: keys) else {
+                measurement.unreadableEntries += 1
+                continue
+            }
             if let date = values.contentModificationDate,
                date > measurement.newestModification, date <= Date() {
                 measurement.newestModification = date

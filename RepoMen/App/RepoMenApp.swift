@@ -55,7 +55,7 @@ struct RepoMenApp: App {
                 Button("Reclaim Checked…") { model.confirmingReclaim = true }
                     .keyboardShortcut(.delete, modifiers: .command)
                     .disabled(model.checkedItems.isEmpty || model.isReclaiming
-                              || model.isSystemScanning)
+                              || model.isSystemScanning || model.sidebarSelection == .managedStorage)
             }
             // The context menu's row actions, discoverable and Help-searchable.
             CommandMenu("Items") {

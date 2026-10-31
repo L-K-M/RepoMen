@@ -7,6 +7,7 @@ struct ScanConfiguration: Sendable {
     var enabledKinds: Set<ArtifactKind>
     /// Levels below each root; deep enough for monorepos, a stop for pathological trees.
     var maxDepth: Int = 16
+    var home: URL = FileManager.default.homeDirectoryForCurrentUser
 }
 
 /// Walks the configured dev roots and reports every directory the `RuleCatalog`
@@ -114,6 +115,7 @@ enum Scanner {
             let childPath = child.path
             guard !alwaysSkip.contains(name.lowercased()), values?.isPackage != true,
                   !isExcluded(childPath, config: config),
+                  !PathGuards.requiresOwnerCleanup(path: childPath, home: config.home.path),
                   childPath != userLibraryPath else { continue }
 
             if let match = RuleCatalog.match(
@@ -157,6 +159,7 @@ enum Scanner {
     private static func scanRootDepth(_ directory: URL, scopeRoots: [URL],
                                       config: ScanConfiguration, fileManager: FileManager) -> Int? {
         guard !PathGuards.isUnder(directory.path, root: userLibraryPath),
+              !PathGuards.requiresOwnerCleanup(path: directory.path, home: config.home.path),
               !isExcluded(directory.path, config: config),
               GitWorktrees.hasNoSymlinkComponents(directory) else { return nil }
         let depths = scopeRoots.filter { PathGuards.isUnder(directory.path, root: $0.path) }

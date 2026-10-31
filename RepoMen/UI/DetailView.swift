@@ -9,22 +9,32 @@ struct DetailView: View {
     @EnvironmentObject private var snapshotModel: SnapshotModel
 
     private var showingSnapshots: Bool { model.sidebarSelection == .snapshots }
+    private var showingManagedStorage: Bool { model.sidebarSelection == .managedStorage }
+    private var showingSystemAreas: Bool { model.sidebarSelection == .category(.system) }
 
     var body: some View {
         Group {
-            if showingSnapshots {
+            if showingManagedStorage {
+                ManagedStorageView()
+            } else if showingSnapshots {
                 // Snapshots are not paths: their own pane replaces the table, its
                 // footer, and the empty state while the sidebar row is selected.
                 SnapshotsView()
-            } else if model.items.isEmpty && !model.isBusy && !model.isSystemScanning {
+            } else if model.items.isEmpty && !model.isBusy && !model.isSystemScanning && !showingSystemAreas {
                 // A running system scan counts as busy here too: the footer (which
                 // carries its progress line and Stop button) lives on the table branch.
+                // The System (root) category never shows the generic empty state;
+                // it uses the table branch with the scan header instead.
                 EmptyStateView()
             } else {
                 VStack(spacing: 0) {
+                    if showingSystemAreas {
+                        SystemScanHeaderView()
+                        Divider()
+                    }
                     ZStack {
                         ItemTable()
-                        if model.visibleItems.isEmpty && !model.items.isEmpty {
+                        if model.visibleItems.isEmpty && (showingSystemAreas || !model.items.isEmpty) {
                             noMatchesPlaceholder
                         }
                     }
@@ -91,61 +101,65 @@ struct DetailView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            // A system scan is a scan too: show Stop rather than a Scan button that
-            // looks enabled but would no-op against the model's guard.
-            if model.isBusy || model.isSystemScanning {
-                Button {
-                    if model.isSystemScanning {
-                        model.cancelSystemScan()
-                    } else {
-                        model.cancelScan()
+            // Managed storage pane has its own controls; hide scan-related toolbar
+            // items so the user does not confuse table actions with managed areas.
+            if !showingManagedStorage {
+                // A system scan is a scan too: show Stop rather than a Scan button that
+                // looks enabled but would no-op against the model's guard.
+                if model.isBusy || model.isSystemScanning {
+                    Button {
+                        if model.isSystemScanning {
+                            model.cancelSystemScan()
+                        } else {
+                            model.cancelScan()
+                        }
+                    } label: {
+                        Label("Stop", systemImage: "stop.circle")
                     }
-                } label: {
-                    Label("Stop", systemImage: "stop.circle")
+                    .help(model.isSystemScanning
+                          ? "Stop the system scan (dismisses the password prompt)"
+                          : "Stop the scan")
+                } else {
+                    Button {
+                        model.startScan()
+                    } label: {
+                        Label("Scan", systemImage: "magnifyingglass")
+                    }
+                    .disabled(model.isReclaiming)
+                    .help(model.isReclaiming
+                          ? "Waiting for the reclaim to finish"
+                          : "Scan the configured folders (⌘R)")
                 }
-                .help(model.isSystemScanning
-                      ? "Stop the system scan (dismisses the password prompt)"
-                      : "Stop the scan")
-            } else {
+
                 Button {
-                    model.startScan()
+                    model.scanSystemAreas()
                 } label: {
-                    Label("Scan", systemImage: "magnifyingglass")
+                    Label("System Scan", systemImage: "lock.shield")
                 }
-                .disabled(model.isReclaiming)
-                .help(model.isReclaiming
-                      ? "Waiting for the reclaim to finish"
-                      : "Scan the configured folders (⌘R)")
-            }
+                .disabled(model.isBusy || model.isReclaiming || model.isSystemScanning)
+                .help("Find root-owned system logs and caches (like rtcreportingd's RTCReporting logs) — macOS asks for your administrator password")
 
-            Button {
-                model.scanSystemAreas()
-            } label: {
-                Label("System Scan", systemImage: "lock.shield")
-            }
-            .disabled(model.isBusy || model.isReclaiming || model.isSystemScanning)
-            .help("Find root-owned system logs and caches (like rtcreportingd's RTCReporting logs) — macOS asks for your administrator password")
+                Button {
+                    model.sidebarSelection = .snapshots
+                } label: {
+                    Label("Snapshots", systemImage: "clock.arrow.circlepath")
+                }
+                .disabled(showingSnapshots)
+                .help("Time Machine local snapshots: the space they hold, and how to release it (⌘⇧S)")
 
-            Button {
-                model.sidebarSelection = .snapshots
-            } label: {
-                Label("Snapshots", systemImage: "clock.arrow.circlepath")
+                // Reclaim acts on checked table rows; while the snapshots pane is up
+                // that would be invisible and confusing — the pane has its own buttons.
+                Button {
+                    model.confirmingReclaim = true
+                } label: {
+                    Label("Reclaim…", systemImage: "trash")
+                }
+                .disabled(model.checkedItems.isEmpty || model.isReclaiming || model.isSystemScanning
+                          || showingSnapshots || showingManagedStorage)
+                .help(model.preferences.moveToTrash
+                      ? "Move the checked items to the Trash (⌘⌫)"
+                      : "Permanently delete the checked items (⌘⌫)")
             }
-            .disabled(showingSnapshots)
-            .help("Time Machine local snapshots: the space they hold, and how to release it (⌘⇧S)")
-
-            // Reclaim acts on checked table rows; while the snapshots pane is up
-            // that would be invisible and confusing — the pane has its own buttons.
-            Button {
-                model.confirmingReclaim = true
-            } label: {
-                Label("Reclaim…", systemImage: "trash")
-            }
-            .disabled(model.checkedItems.isEmpty || model.isReclaiming || model.isSystemScanning
-                      || showingSnapshots)
-            .help(model.preferences.moveToTrash
-                  ? "Move the checked items to the Trash (⌘⌫)"
-                  : "Permanently delete the checked items (⌘⌫)")
         }
     }
 
@@ -158,9 +172,7 @@ struct DetailView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 28))
                 .foregroundStyle(.tertiary)
-            Text(model.searchText.isEmpty
-                 ? emptyCategoryText
-                 : "No items match “\(model.searchText)”")
+            Text(noMatchesText)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -172,6 +184,20 @@ struct DetailView: View {
             return "No \(category.label.lowercased()) found — nothing to repossess here."
         }
         return "Nothing found."
+    }
+
+    /// Text shown in the placeholder overlay when the visible item list is empty.
+    /// For the System (root) category, uses neutral copy or scanning status.
+    private var noMatchesText: String {
+        if !model.searchText.isEmpty {
+            return "No items match “\(model.searchText)”"
+        }
+        if showingSystemAreas {
+            return model.isSystemScanning
+                ? "Scanning system areas…"
+                : "Use Scan System Areas to check root-owned logs and caches."
+        }
+        return emptyCategoryText
     }
 
     // MARK: Footer

@@ -9,7 +9,7 @@ more.
 > [!IMPORTANT]
 > LLM disclosure: This codebase was written with substantial help from large language models: AI coding agents working from the [`AGENTS.md`](AGENTS.md) brief in this repo.
 
-**Version:** <!-- version -->0.2.0<!-- /version -->
+**Version:** <!-- version -->0.3.0<!-- /version -->
 
 ## Why
 
@@ -39,15 +39,21 @@ containers you still need). RepoMen sits deliberately in the middle:
   qualifies. Registered Git worktrees inside the configured scan folders are also
   scanned, including worktrees stored under hidden directories.
 - **Developer caches:** Xcode DerivedData (per project), device support, simulator
-  caches, SwiftPM cache.
+  caches, SwiftPM cache, and JetBrains indexes/VCS-log caches. Local History and
+  embedded-browser state stay intact.
+- **Application caches:** Slack and Claude HTTP/code caches, plus OpenCode's
+  rebuildable package cache, with running-app warnings.
 - **Codex/ChatGPT crash reports:** Crashpad report buckets in both current and
   legacy app-data locations, with a warning while the app runs. Past reports
   cannot be regenerated, and cleanup does not fix an active crash loop.
-- **Package managers:** Homebrew, npm, Yarn, pnpm, pip, uv, Go, Cargo registry,
+- **Package managers:** Homebrew, npm/npx, Yarn, pnpm (including the XDG store), pip, Go, Cargo registry,
   Gradle, Maven, CocoaPods — the expensive-to-refill ones are labeled "slow to
-  rebuild".
+  rebuild". Gradle wrapper distributions are included.
 - **Browser caches:** per-profile `Cache`/`Code Cache` for Chrome, Brave, Edge, Arc,
-  Vivaldi, Chromium, Firefox — with a warning badge while the browser is running.
+  Vivaldi, Chromium, Firefox and Zen, with a warning badge while the browser is running.
+- **Managed cleanup:** read-only sizes and owning-tool instructions for Android
+  SDKs and virtual devices, Android Studio, uv, Arq cache/logs and Sparkle updater
+  staging. These areas have no reclaim checkboxes or watch automation.
 - **System areas (opt-in, admin):** root-owned logs and caches that no unprivileged
   tool can even see — most notably the [runaway `rtcreportingd` logs](https://mjtsai.com/blog/2026/08/21/huge-rtcreporting-logs-and-dropbox/)
   that fill `/private/var/root/Library/Logs/RTCReporting` with 60–70+ GB (usually
@@ -93,6 +99,8 @@ protected folder (e.g. `~/Documents`).
 (RTCReporting logs and friends). macOS asks for your administrator password once
 per scan and once per reclaim; checked system items are deleted permanently (the
 Trash can't take root-owned files) after being re-verified as root.
+You can also open **System (root)** in the sidebar and click **Scan System Areas…**
+in that pane. Selecting the category alone does not request administrator access.
 
 **Time Machine → Local snapshots** in the sidebar (⌘⇧S, or the clock button in the
 toolbar) shows the Time Machine local snapshots of your disk. Use **Release…** to have
@@ -106,6 +114,14 @@ happened.
 
 Right-click any row to reveal it in Finder or exclude it from future scans. Settings
 (⌘,) manages scan folders, per-kind rule toggles, and Trash vs. permanent delete.
+
+Choose **Managed cleanup** in the sidebar, then **Measure** to inspect storage that
+needs its owning tool. Android SDK Manager removes selected SDK packages; Device
+Manager deletes selected virtual devices and their stored data. uv cleanup uses
+`uv cache prune` or `uv cache clean`, never direct file deletion. Arq's **Backup
+Plan > Clear Cache** rebuilds destination-derived metadata and may cause substantial
+data transfer; it does not clear activity logs. RepoMen links to Arq Support for
+log-pruning guidance. Managed sizes are footprints, not guaranteed reclaimable space.
 
 **Watch mode** (Settings → Watch) keeps chosen folders clean on its own: give a
 folder an idle threshold, arm the master switch, and — while RepoMen lives in your

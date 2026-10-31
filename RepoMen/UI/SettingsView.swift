@@ -179,7 +179,7 @@ private struct RulesSettingsView: View {
     }
 
     private func kinds(in category: ArtifactCategory) -> [ArtifactKind] {
-        ArtifactKind.allCases.filter { $0.category == category }
+        ArtifactKind.allCases.filter { $0.category == category && $0 != .uvCache }
     }
 
     private func binding(for kind: ArtifactKind) -> Binding<Bool> {
