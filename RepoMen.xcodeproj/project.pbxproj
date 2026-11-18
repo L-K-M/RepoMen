@@ -401,7 +401,7 @@
 			repositoryURL = "https://github.com/L-K-M/Updraft";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 0.1.0;
+				minimumVersion = 0.2.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

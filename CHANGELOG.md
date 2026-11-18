@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- When GitHub's rate limit stops a Check for Updates, the alert says when to
+  try again instead of showing a bare HTTP 403 (Updraft 0.2.0).
 - Move the update checker to the shared Updraft package. RepoMen still never
   downloads an update: the Download button opens the release page. Version
   parsing is now stricter, pre-release ordering follows the SemVer rules, a
