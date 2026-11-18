@@ -1,7 +1,8 @@
 # CI/CD
 
-Two GitHub Actions workflows, both on `macos-15` with Xcode pinned to **16.2**. RepoMen
-has no external package dependencies; nothing is resolved or vendored.
+Two GitHub Actions workflows, both on `macos-15` with Xcode pinned to **16.2**. The
+only package dependency is the first-party Updraft package, pinned in
+`Package.resolved`; CI resolves it from GitHub like any Swift package.
 
 ## CI — `.github/workflows/ci.yml`
 

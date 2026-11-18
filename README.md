@@ -137,7 +137,7 @@ than the number shown.
 ## Build
 
 ```bash
-# Requires Xcode 16.2+. No external dependencies.
+# Requires Xcode 16.2+. The only dependency is the first-party Updraft package.
 xcodebuild -project RepoMen.xcodeproj -scheme RepoMen -destination 'platform=macOS' build
 
 # or an incremental Release build that reveals the product in Finder:

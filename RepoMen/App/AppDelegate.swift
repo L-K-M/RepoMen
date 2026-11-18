@@ -1,14 +1,16 @@
 import AppKit
+import UpdraftKit
 
-/// Minimal delegate: owns the update checker (the `Updates/` module shared with the
-/// sibling apps) and gives the utility its window behavior — quit-on-close normally,
+/// Minimal delegate: owns the update checker (Updraft, shared with the sibling
+/// apps) and gives the utility its window behavior — quit-on-close normally,
 /// menu-bar resident once watch folders exist — with one exception: the app never
 /// dies in the middle of a deletion batch, manual or automatic.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     let updateChecker = UpdateChecker(
-        configuration: .init(owner: "L-K-M", repo: "RepoMen", appName: "RepoMen"))
+        configuration: .init(owner: "L-K-M", repo: "RepoMen", appName: "RepoMen",
+                              autoDownloadAssets: false, throttleFraction: 0.85))
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !Self.isRunningTests else { return }

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UpdraftKit
 
 /// Settings window (⌘,): General / Folders / Rules / Updates. The tab views are
 /// implementation details of this scene and live here with it.
