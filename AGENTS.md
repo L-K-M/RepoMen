@@ -28,13 +28,21 @@ to the Trash. See [PLAN.md](PLAN.md) for the design and, critically, the trust m
   `WatchNotifier` (notifications).
 - `RepoMen/UI` — SwiftUI views: sidebar, table, snapshots pane, settings, empty
   state, menu bar.
-- `RepoMen/Updates` — reusable GitHub release checker (shared verbatim with the
-  sibling apps).
 - `RepoMenTests` — pure-logic + temp-dir integration tests (no UI tests).
+
+## Dependencies
+
+- [Updraft](https://github.com/L-K-M/Updraft) — the shared GitHub Releases
+  update checker (`UpdraftKit`), pinned by tag `v0.1.0` up to the next minor.
+  RepoMen keeps `autoDownloadAssets: false` (the Download button opens the release
+  page) and its `0.85` throttle fraction. It is the app's only dependency and is
+  released into the public domain (Unlicense).
 
 The Xcode project uses **file-system-synchronized groups**: new `.swift` files under
 `RepoMen/` or `RepoMenTests/` are picked up automatically — no `project.pbxproj`
-edits needed (except when adding a Swift Package).
+edits needed (except when adding a Swift Package). The one package dependency,
+Updraft, is resolved from `https://github.com/L-K-M/Updraft` and pinned in
+`Package.resolved`.
 
 ## Conventions
 
